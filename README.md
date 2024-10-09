@@ -4,7 +4,6 @@ A library for OOP in C that allows simple syntax for creating and using classes 
 ## Creating a class
 1. **Include `ClassyC.h`.**
 2. **Define CLASS with the name of the class.** To avoid redefinition compiler warnings, use `#undef CLASS` before every new class.
-   Example:
    ```c
    #undef CLASS
    #define CLASS Car
@@ -22,7 +21,6 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    - `Event(event_name[, args])` - To declare an event.
    - `Method(ret_type, method_name[, args])` - To declare a new method.
    - `Override(ret_type, method_name[, args])` - To declare an overridden method.
-   Example:
    ```c
    #define CLASS_Car(Base, Interface, Data, Event, Method, Override) \
      Base(Vehicle) Interface(Refuelable) \
@@ -36,7 +34,6 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    - Optionally, call `INIT_BASE([optional_parameters]);` to run the user-defined code in the `CONSTRUCTOR` of the base class.
    - If used, `INIT_BASE` should be called inside the `CONSTRUCTOR` body and before any custom initialization code.
    - Close with `END_CONSTRUCTOR`.
-   Examples:
    ```c
    CONSTRUCTOR() END_CONSTRUCTOR
    ```
@@ -49,14 +46,12 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    END_CONSTRUCTOR
    ```
 5. **Use `DESTRUCTOR()` macro** and include cleanup code before the `END_DESTRUCTOR` macro. Instance is available as `self`.   
-   Example:
    ```c
    DESTRUCTOR() END_DESTRUCTOR
    ```
 6. **Use `METHOD(ret_type, method_name, ...)` macro** to implement every method declared in the `CLASS_class_name` macro.
    - Within methods, the current object is accessed using the `self` pointer.
    - Close the method implementation with `END_METHOD`.
-   Example:
    ```c
    METHOD(void, move, int speed, int distance)
      self->position += distance;
@@ -71,12 +66,10 @@ A library for OOP in C that allows simple syntax for creating and using classes 
 
 ## Using a class
 1. **Call `CREATE(class_name, optional_constructor_parameters)`** to create a new object.
-   Example:
    ```c
    Car *my_car = CREATE(Car, 10000);
    ```
 2. **Access data members directly (`object->member_name = value;`).**
-   Example:
    ```c
    my_car->km_total = 10000;
    ```
@@ -85,7 +78,6 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    - To call methods using the `CALL` macro use `CALL(instance, method[, args])`.
    - There is no need to cast the object; the method will cast to the appropriate type and provide the correctly casted `self` pointer inside the method.
    - All methods, inherited or new (or interface-based), follow this calling convention.
-   Examples:
    ```c
    my_car->move(my_car, 100, 200);
    ```
@@ -94,7 +86,6 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    ```
 4. **Define event handlers using `EVENT_HANDLER(class_name, event_name, handler_ID, ...) [code] END_EVENT_HANDLER`** in the global scope (outside of any function). `handler_ID` is a unique ID for the event handler (letters, numbers, `_`).
    - Within event handlers, the instance is accessed using the `self` pointer.
-   Example:
    ```c
    EVENT_HANDLER(Car, on_need_fuel, mycar_lowfuel, int km_to_collapse)
      if (km_to_collapse < 10) {
@@ -104,19 +95,16 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    ```
 5. **Register an event handler with an object using: `REGISTER_EVENT(class_name, event_name, handler_ID, object)`**.
    - Only one handler can be registered per event and object. Subsequent calls to `REGISTER_EVENT` for the same event and object will overwrite the previous handler.
-   Example:
    ```c
    REGISTER_EVENT(Car, on_need_fuel, mycar_lowfuel, my_car);
    ```
 6. **To cast the object to the desired type, use `(cast_class *)object`.**
    - Available methods and data members will be the subset available in the cast class.
    - Methods will be the most derived versions.
-   Example:
    ```c
    Vehicle *my_car_as_vehicle = (Vehicle *)my_car;
    ```
 7. **Call `DESTROY(object)` to free the memory allocated for the object.** It is recommended to nullify the pointer after `DESTROY`ing.
-   Example:
    ```c
    DESTROY(my_car);
    my_car = NULL;
@@ -127,7 +115,6 @@ A library for OOP in C that allows simple syntax for creating and using classes 
      - `Data(member_type, member_name)` - To declare a data member.
      - `Event(event_name[, args])` - To declare an event.
      - `Method(ret_type, method_name[, args])` - To declare a method.
-   Example:
    ```c
    #define I_Moveable(Data, Event, Method) \
      Data(int, position) \
@@ -137,12 +124,10 @@ A library for OOP in C that allows simple syntax for creating and using classes 
 2. **Call `CREATE_INTERFACE(interface_name)` once right after the interface declaration.**
    - This creates a new type of interface struct with the pointers to the members declared in the interface and a self pointer to the class instance.
    - It is required to call this macro after the interface declaration and before any class that implements the interface.
-   Example:
    ```c
    CREATE_INTERFACE(Moveable)
    ```
 3. **To implement the interface, make sure the class declares or inherits all the members and includes the interface name in its `CLASS_class_name` interfaces list.**
-   Example:
    ```c
    #define CLASS_Vehicle(Base, Interface, Data, Event, Method, Override)\
      Base(OBJECT) Interface(Sellable) Interface(Moveable) \
@@ -157,7 +142,6 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    - `as_interface_name` is a struct of type `interface_name`, which contains pointers to all the interface members in the object and the object itself.
    - Interface struct data members are pointers to the actual data members in the object. When accessing them, you need to dereference the pointers.
    - Interface structs should be handled carefully to avoid shallow copies leading to unintended side effects.
-   Example:
    ```c
    void swap_movables_position(Moveable object1, Moveable object2) {
      int distance_moved = abs(*object1.position - *object2.position);
@@ -181,7 +165,6 @@ A library for OOP in C that allows simple syntax for creating and using classes 
 5. **To raise an event from an interface, use `RAISE_INTERFACE_EVENT(as_interface_obj, event_name[, args])`.**
    - The `as_interface_obj` is the interface struct, which contains the pointers to the interface members in the object.
    - `RAISE_INTERFACE_EVENT` will handle the additional level of indirection due to the interface's structure.
-   Example:
    ```c
    RAISE_INTERFACE_EVENT(movable_struct, on_move, distance_moved);
    ```
@@ -189,14 +172,12 @@ A library for OOP in C that allows simple syntax for creating and using classes 
 These macros can be defined before including this header to customize some of the library's naming conventions and error checking.
 - **CLASSYC_PREFIX**: Prefix for the global scope identifiers. Default: `#define CLASSYC_PREFIX ClassyC_`
 - **CLASSYC_CLASS_NAME**: Used to define the macro holding the class name, by default it is set to `CLASS` but can be changed to any other name to avoid conflicts.
-  Example:
   ```c
   #define CLASSYC_CLASS_NAME NEW_CLASS_NAME
   #define NEW_CLASS_NAME Aircraft
   ```
 - **CLASSYC_CLASS_IMPLEMENT**: Used to define the prefix of the macro holding the class implementation. Default: `#define CLASSYC_CLASS_IMPLEMENT CLASS_`
   If you redefine `CLASSYC_CLASS_IMPLEMENT`, you must also define an empty macro for the `OBJECT` class with the same prefix.
-  Examples:
   ```c
   #define CLASSYC_CLASS_IMPLEMENT DECLARE_CLASS_
   #define DECLARE_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override)
@@ -208,7 +189,6 @@ These macros can be defined before including this header to customize some of th
   #define CUSTOM_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
   ```
 - **CLASSYC_INTERFACE_DECLARATION**: The name of the macro that declares the interface. Default: `#define CLASSYC_INTERFACE_DECLARATION I_`
-  Example:
   ```c
   #define CLASSYC_INTERFACE_DECLARATION NEW_INTERFACE_
   #define NEW_INTERFACE_Moveable(Data, Event, Method)
