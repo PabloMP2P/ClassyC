@@ -39,7 +39,8 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    Examples:
    ```c
    CONSTRUCTOR() END_CONSTRUCTOR
-
+   ```
+   ```c
    CONSTRUCTOR(int km_total_when_bought)
      INIT_BASE();
      self->position = 0;
@@ -87,6 +88,8 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    Examples:
    ```c
    my_car->move(my_car, 100, 200);
+   ```
+   ```c
    CALL(my_car, move, 100, 200);  // Alternative syntax, expands to the above
    ```
 4. **Define event handlers using `EVENT_HANDLER(class_name, event_name, handler_ID, ...) [code] END_EVENT_HANDLER`** in the global scope (outside of any function). `handler_ID` is a unique ID for the event handler (letters, numbers, `_`).
@@ -193,13 +196,12 @@ These macros can be defined before including this header to customize some of th
   ```
 - **CLASSYC_CLASS_IMPLEMENT**: Used to define the prefix of the macro holding the class implementation. Default: `#define CLASSYC_CLASS_IMPLEMENT CLASS_`
   If you redefine `CLASSYC_CLASS_IMPLEMENT`, you must also define an empty macro for the `OBJECT` class with the same prefix.
-  Example:
+  Examples:
   ```c
   #define CLASSYC_CLASS_IMPLEMENT DECLARE_CLASS_
   #define DECLARE_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override)
   #define DECLARE_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
   ```
-  Example:
   ```c
   #define CLASSYC_CLASS_IMPLEMENT CUSTOM_CLASS_
   #define CUSTOM_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override)
