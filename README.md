@@ -1,9 +1,9 @@
 # ClassyC
-A library for OOP in C that allows simple syntax for creating and using classes with polymorphism, inheritance, interfaces, events, and automatic method registration. ClassyC is an experimental and recreational project. It is not intended for production use.
+A library for OOP in C that allows simple syntax for creating and using classes with polymorphism, inheritance, interfaces, events, automatic method registration and automatic destruction of objects and freeing of memory. ClassyC is an experimental and recreational project. It is not intended for production use.
 
 ## Creating a class
 1. **Include `ClassyC.h`.**
-2. **Define CLASS with the name of the class.** To avoid redefinition compiler warnings, use `#undef CLASS` before every new class.
+2. **Define CLASS with the name of the class.** To avoid redefinition compiler warnings, use `#undef CLASS` before every new class (all other macros need not be undefined).
    ```c
    #undef CLASS
    #define CLASS Car
@@ -12,7 +12,7 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    - This macro must be defined with one `Base` and zero or more of each `Interface`, `Data`, `Event`, `Method` and `Override` entries.
    - Interfaces, data members, events, and methods are inherited from the base class (and its base classes, recursively).
    - Classes implement interfaces. When a class declares that it uses an interface, it must also declare and define all the members (data, events, and methods) of that interface, or inherit them from a parent class.
-   - Overridden methods must maintain the signatures (return type, number of parameters, and parameter types) of the original method.
+   - Overridden methods must exactly match the signatures (return type, number of parameters, and parameter types) of the original method to ensure proper behavior.
    - Users should not redeclare any members or interfaces already declared in base classes (collision will occur).
    Syntax:
    - `Base(base_class_name)` - To declare the base class (use `OBJECT` if it has no base class).
@@ -22,17 +22,22 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    - `Method(ret_type, method_name[, args])` - To declare a new method.
    - `Override(ret_type, method_name[, args])` - To declare an overridden method.
    ```c
+   #undef CLASS
+   #define CLASS Car
    #define CLASS_Car(Base, Interface, Data, Event, Method, Override) \
-     Base(Vehicle) Interface(Refuelable) \
-     Data(int, km_total) \
-     Data(int, km_since_last_fuel) \
-     Event(on_need_fuel, int km_to_collapse) \
-     Method(void, park) \
-     Override(int, estimate_price)
+       Base(Vehicle) \
+       Data(int, km_total) \
+       Data(int, km_since_last_fuel) \
+       Event(on_need_fuel, int km_to_collapse) \
+       Method(void, park) \
+       Override(int, estimate_price) \
+       Override(void, move, int speed, int distance)
    ```
 4. **Use `CONSTRUCTOR(optional_parameters)` macro** and include any code to execute when a new instance (available as `self` in the constructor) is created.
    - Optionally, call `INIT_BASE([optional_parameters]);` to run the user-defined code in the `CONSTRUCTOR` of the base class.
    - If used, `INIT_BASE` should be called inside the `CONSTRUCTOR` body and before any custom initialization code.
+   - The variable is_base is available here: an integer flag passed to the constructor (0 for the most derived class and 1 for base classes during inheritance initialization).
+   - Curly braces around the body content is not needed, as the braces are already included by the macros.
    - Close with `END_CONSTRUCTOR`.
    ```c
    CONSTRUCTOR() END_CONSTRUCTOR
@@ -43,9 +48,12 @@ A library for OOP in C that allows simple syntax for creating and using classes 
      self->position = 0;
      self->km_total = km_total_when_bought;
      self->km_since_last_fuel = 0;
+     if (!is_base) {
+       // Initialization code specific to the most derived class, for example, counting the number of instances of the class
+     }     
    END_CONSTRUCTOR
    ```
-5. **Use `DESTRUCTOR()` macro** and include cleanup code before the `END_DESTRUCTOR` macro. Instance is available as `self`.   
+5. **Use `DESTRUCTOR()` macro** and include cleanup code before the `END_DESTRUCTOR` macro. Instance is available as `self`, and `is_base` reports if the destructor is being called by a derived class.
    ```c
    DESTRUCTOR() END_DESTRUCTOR
    ```
@@ -65,36 +73,48 @@ A library for OOP in C that allows simple syntax for creating and using classes 
 7. **Raise events from any method using `RAISE_EVENT(object, event_name[, args])`**. If the event has a registered handler, it will be called.
 
 ## Using a class
-1. **Call `CREATE(class_name, optional_constructor_parameters)`** to create a new object.
+
+1. **Use `CREATE_HEAP(ClassName, ObjectPtr, [ConstructorArgs])`** to create a new object in the heap.
    ```c
-   Car *my_car = CREATE(Car, 10000);
+   CREATE_HEAP(Car, my_car, 10000);  // Simple syntax with automatic destruction
+   // Alternative syntax the above expands to:
+   AUTODESTROY_PTR(Car) *my_car = NEW_ALLOC(Car, 10000);
+   // Alternative syntax without automatic destruction:
+   Car *my_car = NEW_ALLOC(Car, 10000);
+   ```
+   Or use `CREATE_STACK(class_name, object_ptr, optional_constructor_parameters)` to create a new object in the stack.
+   ```c
+   CREATE_STACK(Elephant, my_elephant);  // Simple syntax with automatic destruction
+   // Alternative syntax the above expands to:
+   AUTODESTROY(Elephant) my_elephant; 
+   NEW_INPLACE(Elephant, &my_elephant);
+   // Alternative syntax without automatic destruction:
+   Elephant my_elephant;
+   NEW_INPLACE(Elephant, &my_elephant);
    ```
 2. **Access data members directly (`object->member_name = value;`).**
    ```c
-   my_car->km_total = 10000;
+   my_car->km_total += 120;
    ```
 3. **Call methods adding the instance as the first argument, before any other arguments the method may need (`object->method_name(object, ...)`).**
-   - Methods REQUIRE the instance to be passed explicitly as the first parameter. A `CALL` macro is provided for convenience.
-   - To call methods using the `CALL` macro use `CALL(instance, method[, args])`.
+   - Methods REQUIRE the instance to be passed explicitly as the first parameter: `object->method_name(object, ...);`.
    - There is no need to cast the object; the method will cast to the appropriate type and provide the correctly casted `self` pointer inside the method.
    - All methods, inherited or new (or interface-based), follow this calling convention.
    ```c
    my_car->move(my_car, 100, 200);
    ```
-   ```c
-   CALL(my_car, move, 100, 200);  // Alternative syntax, expands to the above
-   ```
 4. **Define event handlers using `EVENT_HANDLER(class_name, event_name, handler_ID, ...) [code] END_EVENT_HANDLER`** in the global scope (outside of any function). `handler_ID` is a unique ID for the event handler (letters, numbers, `_`).
    - Within event handlers, the instance is accessed using the `self` pointer.
    ```c
    EVENT_HANDLER(Car, on_need_fuel, mycar_lowfuel, int km_to_collapse)
-     if (km_to_collapse < 10) {
-       printf("Alert! Last refuel was %d km ago. Need to refuel in less than %d km!\n", self->km_since_last_fuel, km_to_collapse);
-     }
+       if (km_to_collapse < 10) {
+           printf("Alert! Last refuel was %d km ago. Need to refuel in less than %d km!\n", self->km_since_last_fuel, km_to_collapse);
+       }
    END_EVENT_HANDLER
    ```
 5. **Register an event handler with an object using: `REGISTER_EVENT(class_name, event_name, handler_ID, object)`**.
-   - Only one handler can be registered per event and object. Subsequent calls to `REGISTER_EVENT` for the same event and object will overwrite the previous handler.
+   - It is allowed only one event handler per event per object, but the same handler can be registered with multiple different objects.
+   - Only the last registered handler per event and object is retained. Subsequent calls to `REGISTER_EVENT` for the same event and object will overwrite the previous handler.
    ```c
    REGISTER_EVENT(Car, on_need_fuel, mycar_lowfuel, my_car);
    ```
@@ -104,11 +124,18 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    ```c
    Vehicle *my_car_as_vehicle = (Vehicle *)my_car;
    ```
-7. **Call `DESTROY(object)` to free the memory allocated for the object.** It is recommended to nullify the pointer after `DESTROY`ing.
-   ```c
-   DESTROY(my_car);
-   my_car = NULL;
-   ```
+7. **Destroy Objects.**
+  - Automatic Destruction:
+    - If your compiler supports automatic destruction via `__attribute__((__cleanup__))`, objects will be automatically destroyed when they go out of scope.
+  - Manual Destruction:
+    - You can manually destroy objects, automatic destruction will not take place in this case.
+    - For heap-allocated objects, use `DESTROY_FREE(ObjectPtr)` to destroy the object and free memory.
+    - For stack-allocated objects, use `DESTROY(Object)` to destroy the object without freeing memory.
+    ```c
+    DESTROY_FREE(my_car);     // For heap object
+    DESTROY(my_elephant);     // For stack object
+    // No need to set my_car to NULL; DESTROY_FREE already does that.
+    ```
 ## Creating and using interfaces
 1. **Define the x-macro `I_interface_name(Data, Event, Method)` to declare a new interface and all its members.**
    - Syntax:
@@ -137,32 +164,28 @@ A library for OOP in C that allows simple syntax for creating and using classes 
      Method(int, estimate_price) \
      Method(void, move, int speed, int distance)
    ```
-4. **The resulting interface accessor for an interface will be named `as_` + `interface_name` and will be accessible in this way.**
-   - To use the interface, access the `as_interface_name` member of any object of a class that implements the interface.
-   - `as_interface_name` is a struct of type `interface_name`, which contains pointers to all the interface members in the object and the object itself.
+4. **Access the Interface**
+The interface cast function `to_InterfaceName` is stored within the object. You can access the interface by calling this function as a member of the object including the instance as the first parameter. The function returns an interface struct with pointers to the interface members in the object.
+```c
+  InterfaceName interface_struct = object->to_InterfaceName(object);
+```
+The resulting interface accessor for an interface is a struct of type `interface_name`, which contains pointers to all the interface data, methods and events in the object and the object itself.
    - Interface struct data members are pointers to the actual data members in the object. When accessing them, you need to dereference the pointers.
    - Interface structs should be handled carefully to avoid shallow copies leading to unintended side effects.
    ```c
    void swap_movables_position(Moveable object1, Moveable object2) {
-     int distance_moved = abs(*object1.position - *object2.position);
-     int temp = *object1.position;
-     *object1.position = *object2.position;
-     *object2.position = temp;
-     RAISE_INTERFACE_EVENT(object1, on_move, distance_moved);
-     RAISE_INTERFACE_EVENT(object2, on_move, distance_moved);
+      int distance_moved = abs(*object1.position - *object2.position);
+      int temp = *object1.position;
+      *object1.position = *object2.position;
+      *object2.position = temp;
+      RAISE_INTERFACE_EVENT(object1, on_move, distance_moved);
+      RAISE_INTERFACE_EVENT(object2, on_move, distance_moved);
    }
-   
-   int main(void) {
-     Car *my_car = CREATE(Car, 10000);
-     Elephant *my_elephant = CREATE(Elephant);
-     swap_movables_position(my_car->as_Moveable, my_elephant->as_Moveable);
-     DESTROY(my_car);
-     my_car = NULL;
-     DESTROY(my_elephant);
-     my_elephant = NULL;
-   }
+   // Usage: in this case we use two objects of different types. Also, my_car is allocated in the heap and my_elephant in the stack.
+   swap_movables_position(my_car->to_Moveable(my_car), my_elephant.to_Moveable(&my_elephant));
    ```
 5. **To raise an event from an interface, use `RAISE_INTERFACE_EVENT(as_interface_obj, event_name[, args])`.**
+   - When working with interfaces, events are accessed through pointers to function pointers. Use RAISE_INTERFACE_EVENT to correctly handle the additional indirection.
    - The `as_interface_obj` is the interface struct, which contains the pointers to the interface members in the object.
    - `RAISE_INTERFACE_EVENT` will handle the additional level of indirection due to the interface's structure.
    ```c
@@ -177,15 +200,17 @@ These macros can be defined before including this header to customize some of th
   #define NEW_CLASS_NAME Aircraft
   ```
 - **CLASSYC_CLASS_IMPLEMENT**: Used to define the prefix of the macro holding the class implementation. Default: `#define CLASSYC_CLASS_IMPLEMENT CLASS_`
-  If you redefine `CLASSYC_CLASS_IMPLEMENT`, you must also define an empty macro for the `OBJECT` class with the same prefix.
+  If you redefine `CLASSYC_CLASS_IMPLEMENT`, you must also define the x-macro for the `OBJECT` class with the same prefix and the `Data(void, DESTRUCTOR_PTR)` member. The (Base, Interface, Data, Event, Method, Override) parameter declaration is mandatory.
   ```c
   #define CLASSYC_CLASS_IMPLEMENT DECLARE_CLASS_
-  #define DECLARE_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override)
+  #define DECLARE_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
+      Data(void, DESTRUCTOR_PTR)
   #define DECLARE_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
   ```
   ```c
   #define CLASSYC_CLASS_IMPLEMENT CUSTOM_CLASS_
-  #define CUSTOM_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override)
+  #define CUSTOM_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
+      Data(void, DESTRUCTOR_PTR)
   #define CUSTOM_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
   ```
 - **CLASSYC_INTERFACE_DECLARATION**: The name of the macro that declares the interface. Default: `#define CLASSYC_INTERFACE_DECLARATION I_`
@@ -196,31 +221,35 @@ These macros can be defined before including this header to customize some of th
 - **CLASSYC_DISABLE_RUNTIME_CHECKS**: Disable runtime checks for inheritance depth. Default: not defined.
 - **CLASSYC_ENABLE_COMPILE_TIME_CHECKS**: Enable compile-time checks for inheritance depth. Default: not defined.
 ## Additional notes
+- ClassyC supports automatic destruction of objects when they go out of scope if the compiler supports the `__attribute__((__cleanup__))` attribute (e.g., GCC and Clang).
 - Class definitions must be at the global scope. Objects can be declared at any scope, but can't be instantiated outside a function. Interfaces are declared in the top-level scope, before any class that uses them.
 - A class inherits all the methods, events, data members, and interfaces of its base class and, recursively, its base classes.
 - Inherited methods with no new implementation don't need to be included in `CLASS_class_name` or with `METHOD`; they are automatically inherited and available.
 - All methods — new, inherited, or overridden — self-register internally in the class constructor: no need to assign pointers or call register.
+- A `self` pointer is available in all methods, constructors, destructors, and event handlers.
 - `CONSTRUCTOR` and `DESTRUCTOR` are mandatory: must be explicitly defined even if no actions are needed.
-- `CONSTRUCTOR` accepts user-defined parameters; `DESTRUCTOR` doesn't.
+- The `CONSTRUCTOR` can accept user-defined parameters. The `DESTRUCTOR` must be parameterless.
 - The `CONSTRUCTOR` macro must be used after the class definitions and before any methods or the `DESTRUCTOR`.
 - The `DESTRUCTOR` can be declared after the `CONSTRUCTOR` and before or after methods, but must not be declared before the `CONSTRUCTOR`.
 - `INIT_BASE` requires the arguments to match the base `CONSTRUCTOR` parameters. It should be called before the rest of the `CONSTRUCTOR` code.
+- The variable is_base is available in both CONSTRUCTOR and DESTRUCTOR to determine if the call is for a base class during inheritance initialization or cleanup.
 - `METHOD`, `CONSTRUCTOR`, `DESTRUCTOR`, and `EVENT_HANDLER` need to be used in the global scope.
-- No curly braces are needed around the body of the methods/events/constructors/destructors but can be used.
+- No curly braces are needed around the body of the methods, constructors, destructors, or event handlers but can be used for clarity. Not using them won't produce unexpected behavior and is recommended for brevity.
+- Since methods are function pointers within the object, you must pass the instance explicitly when calling them.
 - Interfaces declared in base classes are automatically available in derived classes, including them again in the derived class will cause collisions.
 - Interfaces can overlap in data members, events, and methods without causing conflicts.
 - Casting an object to any base class will give access to the subset of data members and methods present in that base class.
   The methods in the casted object will still point to the most derived implementation of the method in the inheritance chain.
 - All the valid casts of the object will access the same versions of the data, events, and methods.
-- Interface `as_interface_name` structs contain pointers to all the interface members in the object.
+- Interface structs returned by `to_interface_name` functions contain pointers to all the interface members in the object.
   This allows access to members and passing the interface object to functions as value.
 - Interface event members are pointers to function pointers to handle dynamic event handler registration.
 - All method pointers are set to the most derived version of the method in the inheritance chain.
 - Methods and events have only one level of indirection; the pointers are not in virtual tables.
 - The library is optimized to reduce levels of indirection and data overhead.
-- Ensure that for every `CREATE`, there is a corresponding `DESTROY` to prevent memory leaks.
-- Make sure to nullify all pointers to the instance after `DESTROY`ing to avoid dangling pointers.
-- The `RECURSIVE_CLASS_MEMBER_DECLARATION` macro limits the inheritance depth to 9 levels.
+- If the compiler doesn't support automatic destruction, ensure that for every `CREATE_HEAP`, there is a corresponding `DESTROY_FREE` to prevent memory leaks.
+- Make sure to nullify all pointers to the instance after calling `DESTROY_FREE` or `DESTROY` to avoid dangling pointers. The DESTROY_FREE macro for heap-allocated objects already sets the passed pointer to NULL
+- The recursive macros limit the inheritance depth to 9 levels.
   Compile-time checks are available in C11 and later and can be enabled by defining `CLASSYC_ENABLE_COMPILE_TIME_CHECKS` before including the header.
   Runtime checks are enabled by default, but can be disabled by defining `CLASSYC_DISABLE_RUNTIME_CHECKS` before including the header.
-  To support deeper inheritance hierarchies, you can extend the macro definitions by adding `RECURSIVE_CLASS_MEMBER_DECLARATION_10`, `RECURSIVE_CLASS_MEMBER_DECLARATION_11`, and so on, making sure that each macro expands to the next one.
+  To support deeper inheritance hierarchies, you can extend the recursive macros definitions by adding `RECURSIVE_CLASS_MEMBER_DECLARATION_10`, `RECURSIVE_CLASS_MEMBER_DECLARATION_11`, and so on, making sure that each macro expands to the next one.
