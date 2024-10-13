@@ -253,3 +253,7 @@ These macros can be defined before including this header to customize some of th
   Compile-time checks are available in C11 and later and can be enabled by defining `CLASSYC_ENABLE_COMPILE_TIME_CHECKS` before including the header.
   Runtime checks are enabled by default, but can be disabled by defining `CLASSYC_DISABLE_RUNTIME_CHECKS` before including the header.
   To support deeper inheritance hierarchies, you can extend the recursive macros definitions by adding `RECURSIVE_CLASS_MEMBER_DECLARATION_10`, `RECURSIVE_CLASS_MEMBER_DECLARATION_11`, and so on, making sure that each macro expands to the next one.
+
+## Acknowledgements
+- **Unity Test**: I used Unity Test to perform some tests on ClassyC: (https://github.com/ThrowTheSwitch/Unity).
+
