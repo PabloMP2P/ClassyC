@@ -39,7 +39,7 @@ A library for OOP in C that allows simple syntax for creating and using classes 
 4. **Use `CONSTRUCTOR(optional_parameters)` macro** and include any code to execute when a new instance (available as `self` in the constructor) is created.
    - Optionally, call `INIT_BASE([optional_parameters]);` to run the user-defined code in the `CONSTRUCTOR` of the base class.
    - If used, `INIT_BASE` should be called inside the `CONSTRUCTOR` body and before any custom initialization code.
-   - The variable is_base is available here: an integer flag passed to the constructor (0 for the most derived class and 1 for base classes during inheritance initialization).
+   - The variable is_base is available here: a bool flag passed to the constructor (`false` for the most derived class and `true` for base classes during inheritance initialization).
    - Curly braces around the body content is not needed, as the braces are already included by the macros.
    - Close with `END_CONSTRUCTOR`.
    ```c
@@ -235,7 +235,7 @@ These macros can be defined before including this header to customize some of th
 - The `CONSTRUCTOR` macro must be used after the class definitions and before any methods or the `DESTRUCTOR`.
 - The `DESTRUCTOR` can be declared after the `CONSTRUCTOR` and before or after methods, but must not be declared before the `CONSTRUCTOR`.
 - `INIT_BASE` requires the arguments to match the base `CONSTRUCTOR` parameters. It should be called before the rest of the `CONSTRUCTOR` code.
-- The variable is_base is available in both CONSTRUCTOR and DESTRUCTOR to determine if the call is for a base class during inheritance initialization or cleanup.
+- The bool variable is_base is available in both CONSTRUCTOR and DESTRUCTOR to determine if the call is for a base class during inheritance initialization or cleanup.
 - `METHOD`, `CONSTRUCTOR`, `DESTRUCTOR`, and `EVENT_HANDLER` need to be used in the global scope.
 - No curly braces are needed around the body of the methods, constructors, destructors, or event handlers but can be used for clarity. Not using them won't produce unexpected behavior and is recommended for brevity.
 - Since methods are function pointers within the object, you must pass the instance explicitly when calling them.
@@ -540,6 +540,11 @@ int main(void){
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
+#include <stdbool.h>
+
+/* Class flags for constructor and destructor */
+#define IS_BASE_TRUE true
+#define IS_BASE_FALSE false
 
 
 /* Prefix for function names to avoid polluting the global namespace. */
@@ -643,9 +648,9 @@ STRUCT_HEADER(OBJECT) {
 };
 /* Prototypes for OBJECT class functions */
 static void *PREFIXCONCAT(OBJECT, _constructor)(void *self_void);
-static void *PREFIXCONCAT(OBJECT, _user_constructor)(int is_base, void *self_void);
+static void *PREFIXCONCAT(OBJECT, _user_constructor)(bool is_base, void *self_void);
 static void PREFIXCONCAT(OBJECT, _destructor)(void *self_void);
-static void PREFIXCONCAT(OBJECT, _user_destructor)(int is_base, void *self_void);
+static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void);
 /* OBJECT class constructor function: only sets the destructor function pointer */
 static void *PREFIXCONCAT(OBJECT, _constructor)(void *self_void) { 
     OBJECT *self = (OBJECT *)self_void; 
@@ -653,15 +658,12 @@ static void *PREFIXCONCAT(OBJECT, _constructor)(void *self_void) {
     /* Should not be called directly */ 
     return self; 
 }
-static void *PREFIXCONCAT(OBJECT, _user_constructor)(int is_base, void *self_void) {
-    if (is_base == 0) {
-        self_void = PREFIXCONCAT(OBJECT, _constructor)(self_void);
-    }
+static void *PREFIXCONCAT(OBJECT, _user_constructor)(bool is_base, void *self_void) {
     return self_void;
 }
 /* OBJECT class destructor function */
 static void PREFIXCONCAT(OBJECT, _destructor)(void *self_void) { /* OBJECT destructor does nothing */ }
-static void PREFIXCONCAT(OBJECT, _user_destructor)(int is_base, void *self_void) { /* OBJECT destructor does nothing */ }
+static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void) { /* OBJECT destructor does nothing */ }
 
 /* BASIC MACROS */
 /* Get the name of the base class from the IMPLEMENTS macro */
@@ -784,7 +786,7 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(int is_base, void *self_void)
         return interface_struct; \
     }
 #define WRITE_CLASS_INTERFACE_CAST_FUNCTIONS(class) \
-    GET_IMPLEMENTS(class)(WRITE_NOTHING, WRITE_INTERFACE_CAST_FUNCTION, WRITE_DATA_MEMBER, WRITE_EVENT_MEMBER, WRITE_METHOD_POINTER, WRITE_NOTHING) \
+    GET_IMPLEMENTS(class)(WRITE_NOTHING, WRITE_INTERFACE_CAST_FUNCTION, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING) \
 
 #define RECURSIVE_INTERFACE_CAST_FUNCTIONS_9(class)  \
     WRITE_CLASS_INTERFACE_CAST_FUNCTIONS(class) 
@@ -856,7 +858,7 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(int is_base, void *self_void)
 /* CONSTRUCTOR, DESTRUCTOR, INIT... */
 /* Initialize the base class: call this within the 'CONSTRUCTOR' of the derived class to run the 'CONSTRUCTOR' of the base class. */
 #define INIT_BASE(...) \
-    PREFIXCONCAT(X_GET_BASE_NAME(CLASSYC_CLASS_NAME), _user_constructor)(1, self, ##__VA_ARGS__)
+    PREFIXCONCAT(X_GET_BASE_NAME(CLASSYC_CLASS_NAME), _user_constructor)(IS_BASE_TRUE, self, ##__VA_ARGS__)
 #define CONSTRUCTOR(...)\
     /* Compile-time assertion (available in C11 and later) to ensure the inheritance depth does not exceed the maximum limit */ \
     CLASSYC_CHECK_INHERITANCE_DEPTH_CT\
@@ -868,9 +870,9 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(int is_base, void *self_void)
     /* Prototypes for the destructor and constructor class functions */ \
     static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(void *self_void); \
     static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _ptr_destructor)(CLASSYC_CLASS_NAME **self_ptr); \
-    static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(int is_base, void *self_void); \
+    static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(bool is_base, void *self_void); \
     static void * PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(void *self_void); \
-    static void * PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(int is_base, void *self_void, ##__VA_ARGS__); \
+    static void * PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(bool is_base, void *self_void, ##__VA_ARGS__); \
     /* Write the prototypes for new and overridden methods */ \
     X_METHOD_FUNC_PROTOTYPES(CLASSYC_CLASS_NAME) \
     /* Interface cast functions */ \
@@ -883,7 +885,7 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(int is_base, void *self_void)
         CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void; \
         if (self_void == NULL) { \
             /* No object pointer provided: allocate memory for the object in the heap */ \
-            self = (CLASSYC_CLASS_NAME *)calloc(1, sizeof(CLASSYC_CLASS_NAME)); \
+            self = (CLASSYC_CLASS_NAME *)calloc(true, sizeof(CLASSYC_CLASS_NAME)); \
             self_void = self; \
             if (self == NULL) { \
                 /* Allocation failure */ \
@@ -905,8 +907,8 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(int is_base, void *self_void)
         return self; \
     } \
     /* User constructor function */ \
-    static void* PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(int is_base, void * self_void, ##__VA_ARGS__) { \
-        if (is_base == 0) { \
+    static void* PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(bool is_base, void * self_void, ##__VA_ARGS__) { \
+        if (!is_base) { \
             /* Only for the instanced objects, not for the base classes: run the 'real' constructor */\
              self_void = PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(self_void); \
              if (!self_void) { \
@@ -915,7 +917,7 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(int is_base, void *self_void)
              } \
         } \
         CLASSYC_CLASS_NAME * self = (CLASSYC_CLASS_NAME *)self_void; \
-        /* User constructor code follows, it will be executed even if run_init is 0 */ \
+        /* User constructor code follows, it will be executed even if is_base is true when INIT_BASE is called */ \
 
 #define END_CONSTRUCTOR \
         return self; \
@@ -944,16 +946,17 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(int is_base, void *self_void)
             /* Destructor called for the first time: run the user destructor */ \
         } \
         /* Call user destructor */ \
-        PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(0, self); \
+        PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(IS_BASE_FALSE, self); \
     } \
-    static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(int is_base, void *self_void) { \
+    static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(bool is_base, void *self_void) { \
         CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void; \
         /* User destructor code */ 
 
 #define END_DESTRUCTOR \
         /* Call the base class destructor (this will happen recursively upwards in the inheritance tree) */ \
         if (self) { \
-            PREFIXCONCAT(X_GET_BASE_NAME(CLASSYC_CLASS_NAME), _user_destructor)(1, self); \
+            /* Call the base class destructor with is_base set to true */ \
+            PREFIXCONCAT(X_GET_BASE_NAME(CLASSYC_CLASS_NAME), _user_destructor)(IS_BASE_TRUE, self); \
             /* Mark the destructor as called by setting the function pointer to NULL */\
             self->_destructor = NULL; \
         } \
@@ -1018,7 +1021,7 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(int is_base, void *self_void)
 /* MACROS FOR OBJECT ALLOCATION AND INITIALIZATION */
 /* CREATE_HEAP and CREATE_STACK macros declare, allocate (if needed) and initialize the object */
 #define NO_ALLOC_OBJECT(class_name, object_adr, ...) /* Run the constructor for an already allocated object */ \
-    PREFIXCONCAT(class_name, _user_constructor)(0, object_adr, ##__VA_ARGS__)
+    PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, object_adr, ##__VA_ARGS__)
 #define SET_OBJECT_TO_ZERO(class_name, object_adr) /* Set the object to zero; needed to avoid undefined values in nested anonymous structs */ \
     memset(object_adr, 0, sizeof(class_name))
 
@@ -1030,7 +1033,7 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(int is_base, void *self_void)
 #define AUTODESTROY(class_name) \
     class_name CLEANUP_ATTRIBUTE(class_name, _destructor)
 #define NEW_ALLOC(class_name, ...) \
-    PREFIXCONCAT(class_name, _user_constructor)(0, NULL, ##__VA_ARGS__)
+    PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, NULL, ##__VA_ARGS__)
 #define NEW_INPLACE(class_name, object_adress, ...) \
     (SET_OBJECT_TO_ZERO(class_name, object_adress), \
     NO_ALLOC_OBJECT(class_name, object_adress, ##__VA_ARGS__))
