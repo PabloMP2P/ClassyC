@@ -15,9 +15,9 @@
 
 #include "ClassyC.h"
 
-// Number of objects to create and destroy in each test iteration and number of iterations
+// Number of objects to create and destroy in the speed test
 #define TEST_NUM_OBJECTS 100000ull
-
+// We'll count instances created and destroyed to show how auto-destruction works to prevent memory leaks
 size_t num_objects_created = 0;
 size_t num_objects_destroyed = 0;
 
@@ -58,7 +58,6 @@ METHOD(void, move, int speed, int distance)
     RAISE_EVENT(self, on_move, distance);
 END_METHOD
 
-
 #undef CLASS
 #define CLASS Car
 #define CLASS_Car(Base, Interface, Data, Event, Method, Override) \
@@ -95,7 +94,6 @@ METHOD(void, park)
     self->position = 0;
 END_METHOD
 
-
 #undef CLASS
 #define CLASS Elephant
 #define CLASS_Elephant(Base, Interface, Data, Event, Method, Override) \
@@ -113,7 +111,6 @@ METHOD(void, move, int speed, int distance)
     self->position += distance;
 END_METHOD
 
-
 #undef CLASS
 #define CLASS TinyClass
 #define CLASS_TinyClass(Base, Interface, Data, Event, Method, Override) \
@@ -124,7 +121,6 @@ END_CONSTRUCTOR
 DESTRUCTOR() 
     if (!is_base) num_objects_destroyed++;
 END_DESTRUCTOR
-
 
 // Interfaces can be used as types, and they contain pointers to the object members
 void swap_movables_position(Moveable object1, Moveable object2) {
