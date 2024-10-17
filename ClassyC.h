@@ -16,7 +16,7 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    - Interfaces, data members, events, and methods are inherited from the base class (and its base classes, recursively).
    - Classes implement interfaces. When a class declares that it uses an interface, it must also declare and define all the members (data, events, and methods) of that interface, or inherit them from a parent class.
    - Overridden methods must exactly match the signatures (return type, number of parameters, and parameter types) of the original method to ensure proper behavior.
-   - Users should not redeclare any members or interfaces already declared in base classes (collision will occur).
+   - Users should not redeclare any members or interfaces already declared in base classes (name collision will occur).
    Syntax:
    - `Base(base_class_name)` - To declare the base class (use `OBJECT` if it has no base class).
    - `Interface(interface_name)` - To declare an interface.
@@ -39,8 +39,8 @@ A library for OOP in C that allows simple syntax for creating and using classes 
 4. **Use `CONSTRUCTOR(optional_parameters)` macro** and include any code to execute when a new instance (available as `self` in the constructor) is created.
    - Optionally, call `INIT_BASE([optional_parameters]);` to run the user-defined code in the `CONSTRUCTOR` of the base class.
    - If used, `INIT_BASE` should be called inside the `CONSTRUCTOR` body and before any custom initialization code.
-   - The variable is_base is available here: a bool flag passed to the constructor (`false` for the most derived class and `true` for base classes during inheritance initialization).
-   - Curly braces around the body content is not needed, as the braces are already included by the macros.
+   - The variable is_base is available here; a bool flag passed to the constructor (`false` for the most derived class and `true` for base classes during inheritance initialization).
+   - Curly braces around the body content are not needed, as the braces are already included by the macros.
    - Close with `END_CONSTRUCTOR`.
    ```c
    CONSTRUCTOR() END_CONSTRUCTOR
@@ -168,7 +168,7 @@ A library for OOP in C that allows simple syntax for creating and using classes 
      Method(void, move, int speed, int distance)
    ```
 4. **Access the Interface**
-The interface cast function `to_InterfaceName` is stored within the object. You can access the interface by calling this function as a member of the object including the instance as the first parameter. The function returns an interface struct with pointers to the interface members in the object.
+The interface cast function `to_InterfaceName` is stored within the object. You can access the interface by calling this function as a member of the object, passing the instance as the first parameter. The function returns an interface struct with pointers to the interface members in the object.
 ```c
   InterfaceName interface_struct = object->to_InterfaceName(object);
 ```
@@ -198,22 +198,28 @@ The resulting interface accessor for an interface is a struct of type `interface
 These macros can be defined before including this header to customize some of the library's naming conventions and error checking.
 - **CLASSYC_PREFIX**: Prefix for the global scope identifiers. Default: `#define CLASSYC_PREFIX ClassyC_`
 - **CLASSYC_CLASS_NAME**: Used to define the macro holding the class name, by default it is set to `CLASS` but can be changed to any other name to avoid conflicts.
+  The resulting macro name will mark the syntax used to declare classes. If CLASSYC_CLASS_NAME is not defined, the default is `CLASS`.
+  The library uses CLASSYC_CLASS_NAME internally to access the class name: CLASSYC_CLASS_NAME expands to `CLASS` (or the name defined to it) internally, which itself expands to the name of the class.
   ```c
   #define CLASSYC_CLASS_NAME NEW_CLASS_NAME
   #define NEW_CLASS_NAME Aircraft
   ```
+  ```c
+  #undef CLASSYC_CLASS_NAME
+  #define CLASS Aircraft
+  ```
 - **CLASSYC_CLASS_IMPLEMENT**: Used to define the prefix of the macro holding the class implementation. Default: `#define CLASSYC_CLASS_IMPLEMENT CLASS_`
-  If you redefine `CLASSYC_CLASS_IMPLEMENT`, you must also define the x-macro for the `OBJECT` class with the same prefix and the `Data(void, DESTRUCTOR_PTR)` member. The (Base, Interface, Data, Event, Method, Override) parameter declaration is mandatory.
+  If you redefine `CLASSYC_CLASS_IMPLEMENT`, you must also define the x-macro for the `OBJECT` class with the same prefix and the `Data(void, DESTRUCTOR_FUNCTION_POINTER)` member. The (Base, Interface, Data, Event, Method, Override) parameter declaration is mandatory.
   ```c
   #define CLASSYC_CLASS_IMPLEMENT DECLARE_CLASS_
   #define DECLARE_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
-      Data(void, DESTRUCTOR_PTR)
+      Data(void, DESTRUCTOR_FUNCTION_POINTER)
   #define DECLARE_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
   ```
   ```c
   #define CLASSYC_CLASS_IMPLEMENT CUSTOM_CLASS_
   #define CUSTOM_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
-      Data(void, DESTRUCTOR_PTR)
+      Data(void, DESTRUCTOR_FUNCTION_POINTER)
   #define CUSTOM_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
   ```
 - **CLASSYC_INTERFACE_DECLARATION**: The name of the macro that declares the interface. Default: `#define CLASSYC_INTERFACE_DECLARATION I_`
@@ -228,7 +234,7 @@ These macros can be defined before including this header to customize some of th
 - Class definitions must be at the global scope. Objects can be declared at any scope, but can't be instantiated outside a function. Interfaces are declared in the top-level scope, before any class that uses them.
 - A class inherits all the methods, events, data members, and interfaces of its base class and, recursively, its base classes.
 - Inherited methods with no new implementation don't need to be included in `CLASS_class_name` or with `METHOD`; they are automatically inherited and available.
-- All methods — new, inherited, or overridden — self-register internally in the class constructor: no need to assign pointers or call register.
+- All methods — new, inherited, or overridden — self-register internally in the class constructor: no need to assign funtion pointers or call register functions.
 - A `self` pointer is available in all methods, constructors, destructors, and event handlers.
 - `CONSTRUCTOR` and `DESTRUCTOR` are mandatory: must be explicitly defined even if no actions are needed.
 - The `CONSTRUCTOR` can accept user-defined parameters. The `DESTRUCTOR` must be parameterless.
@@ -237,9 +243,10 @@ These macros can be defined before including this header to customize some of th
 - `INIT_BASE` requires the arguments to match the base `CONSTRUCTOR` parameters. It should be called before the rest of the `CONSTRUCTOR` code.
 - The bool variable is_base is available in both CONSTRUCTOR and DESTRUCTOR to determine if the call is for a base class during inheritance initialization or cleanup.
 - `METHOD`, `CONSTRUCTOR`, `DESTRUCTOR`, and `EVENT_HANDLER` need to be used in the global scope.
+- The `NEW_INPLACE` macro will zero out the memory at `object_address`: this solves the issue generate by some compilers not setting initial value to 0 on nested anonymous structs.
 - No curly braces are needed around the body of the methods, constructors, destructors, or event handlers but can be used for clarity. Not using them won't produce unexpected behavior and is recommended for brevity.
 - Since methods are function pointers within the object, you must pass the instance explicitly when calling them.
-- Interfaces declared in base classes are automatically available in derived classes, including them again in the derived class will cause collisions.
+- Interfaces declared in base classes are automatically available in derived classes, including them again in the derived class will cause name collisions.
 - Interfaces can overlap in data members, events, and methods without causing conflicts.
 - Casting an object to any base class will give access to the subset of data members and methods present in that base class.
   The methods in the casted object will still point to the most derived implementation of the method in the inheritance chain.
@@ -249,13 +256,16 @@ These macros can be defined before including this header to customize some of th
 - Interface event members are pointers to function pointers to handle dynamic event handler registration.
 - All method pointers are set to the most derived version of the method in the inheritance chain.
 - Methods and events have only one level of indirection; the pointers are not in virtual tables.
+- The OBJECT class has a unique implementation pattern: it is the only class that has no base class and is not defined with the `CLASS_` prefix.
 - The library is optimized to reduce levels of indirection and data overhead.
 - If the compiler doesn't support automatic destruction, ensure that for every `CREATE_HEAP`, there is a corresponding `DESTROY_FREE` to prevent memory leaks.
-- Make sure to nullify all pointers to the instance after calling `DESTROY_FREE` or `DESTROY` to avoid dangling pointers. The DESTROY_FREE macro for heap-allocated objects already sets the passed pointer to NULL
+- Ensure that `DESTROY_FREE` is only used with heap-allocated objects.
+- Make sure to nullify all pointers to the instance after calling `DESTROY_FREE` or `DESTROY` to avoid dangling pointers. The DESTROY_FREE macro for heap-allocated objects already sets the passed pointer to NULL.
 - The recursive macros limit the inheritance depth to 9 levels.
   Compile-time checks are available in C11 and later and can be enabled by defining `CLASSYC_ENABLE_COMPILE_TIME_CHECKS` before including the header.
   Runtime checks are enabled by default, but can be disabled by defining `CLASSYC_DISABLE_RUNTIME_CHECKS` before including the header.
   To support deeper inheritance hierarchies, you can extend the recursive macros definitions by adding `RECURSIVE_CLASS_MEMBER_DECLARATION_10`, `RECURSIVE_CLASS_MEMBER_DECLARATION_11`, and so on, making sure that each macro expands to the next one.
+- This library does not inherently provide thread safety. If you are using shared objects across multiple threads, ensure proper synchronization mechanisms are in place to avoid race conditions.
 
 ## Acknowledgements
 - **Unity Test**: I used Unity Test to perform some tests on ClassyC: (https://github.com/ThrowTheSwitch/Unity).
@@ -301,10 +311,10 @@ These macros can be defined before including this header to customize some of th
 #endif
 
 /* The name of the macro that declares the class declaration prefix: by default it is CLASS_ (resulting in CLASS_class_name) */
-/* If this is defined, the empty prefix_OBJECT(Base, Interface, Data, Event, Method, Override) macro must also be defined */
+/* If this is defined, the empty prefix_OBJECT(Base, Interface, Data, Event, Method, Override) macro must also be defined with the same prefix and the Data(void, DESTRUCTOR_FUNCTION_POINTER) member.*/
 #ifndef CLASSYC_CLASS_IMPLEMENT
    #define CLASSYC_CLASS_IMPLEMENT CLASS_
-   #define CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) Data(void, DESTRUCTOR_PTR)
+   #define CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) Data(void, DESTRUCTOR_FUNCTION_POINTER)
 #endif // CLASSYC_CLASS_IMPLEMENT
 
 #define GET_IMPLEMENTS(class_name)CONCAT(CLASSYC_CLASS_IMPLEMENT, class_name)
@@ -368,13 +378,16 @@ These macros can be defined before including this header to customize some of th
     interface_name (*CONCAT(to_, interface_name))(void *self_void);
 
 /* Every class has a destructor function pointer */
-#define DESTRUCTOR_PTR (*_destructor)(void *self_void)
+/* It is introduced as a data member of the OBJECT class struct that is inherited by all classes */
+#define DESTRUCTOR_FUNCTION_POINTER (*_destructor)(void *self_void)
 
-/* OBJECT class: the base class of all classes. It has no base class, no interfaces, no data, no methods, no events */
+/* OBJECT class: the base class of all classes. It only contains the destructor function pointer. */
+/* OBJECT is a fixed name and doesn't use the CLASSYC_CLASS_NAME macro */ 
 /* OBJECT class struct */
 STRUCT_HEADER(OBJECT) {
     /* Having a pointer to the destructor function helps DESTROY calling it without knowing the class name */
-    WRITE_DATA_MEMBER(void, DESTRUCTOR_PTR) /* OBJECT is just a placeholder and doesn't use the CLASSYC_CLASS_NAME macro*/ \
+    /* It is inherited by all classes, so every class has a pointer to the destructor function. Returns void. */
+    WRITE_DATA_MEMBER(void, DESTRUCTOR_FUNCTION_POINTER) \
 };
 /* Prototypes for OBJECT class functions */
 static void *PREFIXCONCAT(OBJECT, _constructor)(void *self_void);
@@ -402,7 +415,8 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
 
 /* Set the pointers to the Basic class functions (_destructor) */
 #define WRITE_SET_BASIC_CLASS_FUNC_POINTERS(class_name) \
-    /* Constructor not needed, we set the destructor */ \
+    /* Constructor pointer not needed (construction is invoked by calling the function directly) */\
+    /* Set the destructor pointer */ \
     self->_destructor = PREFIXCONCAT(class_name, _destructor); 
 
 /* Set the method pointers to the functions of the class */
@@ -441,7 +455,7 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
 #define RECURSIVE_CLASS_MEMBER_DECLARATION_1(class)  \
     struct { GET_IMPLEMENTS(class)(RECURSIVE_CLASS_MEMBER_DECLARATION_2, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING) \
              WRITE_CLASS_STRUCT_NESTED_MEMBERS(class) } ; 
-#define RECURSIVE_CLASS_MEMBER_DECLARATION(class)  \
+#define RECURSIVE_CLASS_MEMBER_DECLARATIONS(class)  \
     struct { GET_IMPLEMENTS(class)(RECURSIVE_CLASS_MEMBER_DECLARATION_1, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING) \
              WRITE_CLASS_STRUCT_NESTED_MEMBERS(class) };
 
@@ -595,7 +609,7 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
     /* Declare the class struct */ \
     STRUCT_HEADER(CLASSYC_CLASS_NAME) { \
         /* Include all the members of the class struct */ \
-        RECURSIVE_CLASS_MEMBER_DECLARATION(CLASSYC_CLASS_NAME) \
+        RECURSIVE_CLASS_MEMBER_DECLARATIONS(CLASSYC_CLASS_NAME) \
     } ; \
     /* Prototypes for the destructor and constructor class functions */ \
     static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(void *self_void); \
@@ -615,7 +629,7 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
         CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void; \
         if (self_void == NULL) { \
             /* No object pointer provided: allocate memory for the object in the heap */ \
-            self = (CLASSYC_CLASS_NAME *)calloc(true, sizeof(CLASSYC_CLASS_NAME)); \
+            self = (CLASSYC_CLASS_NAME *)calloc(1, sizeof(CLASSYC_CLASS_NAME)); \
             self_void = self; \
             if (self == NULL) { \
                 /* Allocation failure */ \
@@ -711,11 +725,13 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
         /* User code for the event */ 
 #define END_EVENT_HANDLER }
 /* Register an event handler for an instance. Handler_ID is a unique ID for the defined event handler (letters, numbers, _). */
+/* If another event handler was registered, it is overwritten. */
 #define REGISTER_EVENT(class_name, event_name, handler_ID, instance_name) \
     do { \
         instance_name->event_name = GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID); \
     } while (0)
 /* Raise an event: use inside any function: RAISE_EVENT(self, event_name[, args]) */
+/* The event handler is executed if it has been registered (pointer not NULL). */
 #define RAISE_EVENT(instance_name, event_name, ...) \
     do { \
         if (instance_name->event_name) instance_name->event_name ((void *)instance_name, ##__VA_ARGS__); \
@@ -750,10 +766,7 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
 
 /* MACROS FOR OBJECT ALLOCATION AND INITIALIZATION */
 /* CREATE_HEAP and CREATE_STACK macros declare, allocate (if needed) and initialize the object */
-#define NO_ALLOC_OBJECT(class_name, object_adr, ...) /* Run the constructor for an already allocated object */ \
-    PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, object_adr, ##__VA_ARGS__)
-#define SET_OBJECT_TO_ZERO(class_name, object_adr) /* Set the object to zero; needed to avoid undefined values in nested anonymous structs */ \
-    memset(object_adr, 0, sizeof(class_name))
+  
 
 /* Macros for explicit object creation syntax */
 /* AUTODESTROY_PTR(Class) *ptr = NEW_ALLOC(class_name, ...) */
@@ -765,8 +778,10 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
 #define NEW_ALLOC(class_name, ...) \
     PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, NULL, ##__VA_ARGS__)
 #define NEW_INPLACE(class_name, object_adress, ...) \
-    (SET_OBJECT_TO_ZERO(class_name, object_adress), \
-    NO_ALLOC_OBJECT(class_name, object_adress, ##__VA_ARGS__))
+    /* Sets the already allocated memory zero; needed to avoid undefined values in nested anonymous structs */ \
+    memset(object_adress, 0, sizeof(class_name)); \
+    /* Call the constructor */ \
+    PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, object_adress, ##__VA_ARGS__)
 
 #define CREATE_STACK(class_name, object_name, ...) \
     /* Declare an instance of the class and allocate the object on the stack */ \
@@ -775,7 +790,6 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
 #define CREATE_HEAP(class_name, object_ptr_name, ...) \
     /* Declare a pointer to a new instance of the class and allocate the object in the heap */ \
     AUTODESTROY_PTR(class_name) *object_ptr_name = NEW_ALLOC(class_name, ##__VA_ARGS__)
-
 
 
 /* MACROS FOR OBJECT DESTRUCTION */
@@ -794,7 +808,9 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
 #define DESTROY(object_name) \
     do { \
         if (object_name._destructor) { \
-            object_name._destructor(&(object_name)); \
+            object_name._destructor((void *)&(object_name)); \
+            /* DESTROY doesn't free the memory.*/\
+            /* It also doesn't set the pointer to NULL, for it receives the object (stack or dereferenced heap) */ \
         } \
     } while (0)
 

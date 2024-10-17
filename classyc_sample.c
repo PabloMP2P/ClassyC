@@ -10,7 +10,7 @@
 // #define CLASSYC_CLASS_NAME CLASS
 // #define CLASSYC_CLASS_IMPLEMENT CLASS_
 // #define CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
-//     Data(void, DESTRUCTOR_PTR)
+//     Data(void, DESTRUCTOR_FUNCTION_POINTER)
 // #define CLASSYC_INTERFACE_DECLARATION I_
 
 #include "ClassyC.h"
