@@ -122,6 +122,63 @@ DESTRUCTOR()
     if (!is_base) num_objects_destroyed++;
 END_DESTRUCTOR
 
+
+#undef CLASS
+#define CLASS AsyncClass
+#define CLASS_AsyncClass(Base, Interface, Data, Event, Method, Override) \
+    Base(OBJECT) \
+    Data(int, clock_id) \
+    Data(int, total_seconds_elapsed) \
+    Data(bool, clock_is_running) \
+    Data(bool, continue_running) \
+    Event(on_second_elapsed) \
+    Method(void, start_clock) \
+    Method(void, stop_clock)
+CONSTRUCTOR() 
+    static int clock_id_counter = 0;
+    if (!is_base) num_objects_created++;
+    self->clock_id = ++clock_id_counter;
+    self->clock_is_running = false;
+    self->continue_running = true;
+    self->total_seconds_elapsed = 0;
+END_CONSTRUCTOR
+DESTRUCTOR()
+    if (!is_base) num_objects_destroyed++;
+END_DESTRUCTOR
+ASYNC_METHOD(void, start_clock)
+    printf("Starting clock %d...\n", self->clock_id);
+    self->clock_is_running = true;
+    self->continue_running = true;
+    while (self->continue_running) {
+        /* Wait for 1 second */
+        clock_t start_time = clock();
+        while (clock() - start_time < 1 * CLOCKS_PER_SEC) {
+            /* Wait unless the clock is stopped */
+            if (!self->continue_running) break;
+        }
+        if (!self->continue_running) break;
+        self->total_seconds_elapsed++;
+        RAISE_EVENT(self, on_second_elapsed);
+
+#if CLASSYC_THREADS_SUPPORTED == 0
+        // The compiler doesn't support threads, and the tinycthread library is not available,
+        // avoid infinite loop by exiting the method
+        printf("Method: asyncronous methods not supported, breaking infinite loop in clock %d.\n", self->clock_id);
+        break;
+#endif
+    }
+    printf("Clock %d stopped\n", self->clock_id);
+    self->continue_running = true;
+    self->clock_is_running = false;
+END_ASYNC_METHOD
+METHOD(void, stop_clock)
+    if (self->clock_is_running) {
+        printf("Stopping clock %d...\n", self->clock_id);
+        self->continue_running = false;
+    }
+END_METHOD
+
+
 // Interfaces can be used as types, and they contain pointers to the object members
 void swap_movables_position(Moveable object1, Moveable object2) {
     // interface members are pointers and must be dereferenced to access the actual values.
@@ -143,6 +200,10 @@ END_EVENT_HANDLER
 
 EVENT_HANDLER(Car, on_move, mycar_move, int distance_moved)
     printf("EVENT HANDLER: Car moved %d units\n", distance_moved);
+END_EVENT_HANDLER
+
+EVENT_HANDLER(AsyncClass, on_second_elapsed, myasyncclass_second_elapsed)
+    printf("Tick! Event handler called, %d seconds elapsed in clock %d\n", self->total_seconds_elapsed, self->clock_id);
 END_EVENT_HANDLER
 
 void successful_exit(void) {
@@ -254,6 +315,45 @@ int main(void){
     DESTROY_FREE(my_car);
     DESTROY(my_elephant);
 #endif
+
+    printf("\nTesting asynchronous methods\n");
+    CREATE_HEAP(AsyncClass, my_async_class1);
+    CREATE_HEAP(AsyncClass, my_async_class2);
+    CREATE_HEAP(AsyncClass, my_async_class3);
+    REGISTER_EVENT(AsyncClass, on_second_elapsed, myasyncclass_second_elapsed, my_async_class1);
+    REGISTER_EVENT(AsyncClass, on_second_elapsed, myasyncclass_second_elapsed, my_async_class2);
+    REGISTER_EVENT(AsyncClass, on_second_elapsed, myasyncclass_second_elapsed, my_async_class3);
+    printf("Main function - starting clocks...\n");
+    my_async_class1->start_clock(my_async_class1);
+    my_async_class2->start_clock(my_async_class2);
+    my_async_class3->start_clock(my_async_class3);
+    
+    printf("Main function - waiting for 2 seconds...\n");
+    for (int wait_count = 1; wait_count <= 2; wait_count++) {
+        clock_t start_last_wait = clock();
+        while (clock() - start_last_wait < 1 * CLOCKS_PER_SEC) {
+            /* Wait for threads to finish */
+        }
+        printf("Main function - %d seconds elapsed\n", wait_count);
+    }
+    printf("Main function - stopping clocks...\n");
+    my_async_class1->stop_clock(my_async_class1);
+    my_async_class2->stop_clock(my_async_class2);
+    my_async_class3->stop_clock(my_async_class3);
+    
+    printf("Main function - waiting for all async methods to finish...\n");
+    do {
+        /* Wait for threads to finish */
+    } while (my_async_class1->clock_is_running || my_async_class2->clock_is_running || my_async_class3->clock_is_running);
+    printf("Main function - all async methods finished\n");
+
+#if CLASSYC_AUTO_DESTROY_SUPPORTED == 0
+    // Compiler doesn't support auto-destruction; destroy the objects manually
+    DESTROY_FREE(my_async_class1);
+    DESTROY_FREE(my_async_class2);
+    DESTROY_FREE(my_async_class3);
+#endif
+
 
     printf("\nTrying auto-destructors: Entering scope of create_objects_inside_function\n"); 
     create_objects_inside_function();
