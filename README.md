@@ -1,5 +1,7 @@
 # ClassyC
-A library for OOP in C that allows simple syntax for creating and using classes with polymorphism, inheritance, interfaces, events, automatic method registration and automatic destruction of objects and freeing of memory. ClassyC is an experimental and recreational project. It is not intended for production use.
+A library for OOP in C that allows simple syntax for creating and using classes with polymorphism, inheritance, interfaces, events, sync and async methods, automatic method registration and automatic destruction of objects and freeing of memory.
+
+ClassyC is an experimental and recreational library not intended for production use. Anything can change at any time. Use at your own risk.
 
 ## Creating a class
 1. **Include `ClassyC.h`.**
@@ -13,7 +15,7 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    - Interfaces, data members, events, and methods are inherited from the base class (and its base classes, recursively).
    - Classes implement interfaces. When a class declares that it uses an interface, it must also declare and define all the members (data, events, and methods) of that interface, or inherit them from a parent class.
    - Overridden methods must exactly match the signatures (return type, number of parameters, and parameter types) of the original method to ensure proper behavior.
-   - Users should not redeclare any members or interfaces already declared in base classes (collision will occur).
+   - Users should not redeclare any members or interfaces already declared in base classes (name collision will occur).
    Syntax:
    - `Base(base_class_name)` - To declare the base class (use `OBJECT` if it has no base class).
    - `Interface(interface_name)` - To declare an interface.
@@ -36,8 +38,8 @@ A library for OOP in C that allows simple syntax for creating and using classes 
 4. **Use `CONSTRUCTOR(optional_parameters)` macro** and include any code to execute when a new instance (available as `self` in the constructor) is created.
    - Optionally, call `INIT_BASE([optional_parameters]);` to run the user-defined code in the `CONSTRUCTOR` of the base class.
    - If used, `INIT_BASE` should be called inside the `CONSTRUCTOR` body and before any custom initialization code.
-   - The variable is_base is available here: an integer flag passed to the constructor (0 for the most derived class and 1 for base classes during inheritance initialization).
-   - Curly braces around the body content is not needed, as the braces are already included by the macros.
+   - The variable is_base is available here; a bool flag passed to the constructor (`false` for the most derived class and `true` for base classes during inheritance initialization).
+   - Curly braces around the body content are not needed, as the braces are already included by the macros.
    - Close with `END_CONSTRUCTOR`.
    ```c
    CONSTRUCTOR() END_CONSTRUCTOR
@@ -70,6 +72,16 @@ A library for OOP in C that allows simple syntax for creating and using classes 
      }
    END_METHOD
    ```
+   - **Use `ASYNC_METHOD(ret_type, method_name)` macro** to implement asynchronous methods. Note that the method must be parameterless.
+   ```c
+   ASYNC_METHOD(void, save_data)
+       // save data   
+       // ...
+       self->finished = true;
+   END_ASYNC_METHOD
+   ```
+   - Synchronous methods will block until they finish, and can have parameters and return values.
+   - Asynchronous methods will return immediately and must not have parameters or return values.
 7. **Raise events from any method using `RAISE_EVENT(object, event_name[, args])`**. If the event has a registered handler, it will be called.
 
 ## Using a class
@@ -96,7 +108,7 @@ A library for OOP in C that allows simple syntax for creating and using classes 
    ```c
    my_car->km_total += 120;
    ```
-3. **Call methods adding the instance as the first argument, before any other arguments the method may need (`object->method_name(object, ...)`).**
+3. **Call methods adding the instance as the first argument, before any other arguments the method may need `object->method_name(object, ...);`.**
    - Methods REQUIRE the instance to be passed explicitly as the first parameter: `object->method_name(object, ...);`.
    - There is no need to cast the object; the method will cast to the appropriate type and provide the correctly casted `self` pointer inside the method.
    - All methods, inherited or new (or interface-based), follow this calling convention.
@@ -165,7 +177,7 @@ A library for OOP in C that allows simple syntax for creating and using classes 
      Method(void, move, int speed, int distance)
    ```
 4. **Access the Interface**
-The interface cast function `to_InterfaceName` is stored within the object. You can access the interface by calling this function as a member of the object including the instance as the first parameter. The function returns an interface struct with pointers to the interface members in the object.
+The interface cast function `to_InterfaceName` is stored within the object. You can access the interface by calling this function as a member of the object, passing the instance as the first parameter. The function returns an interface struct with pointers to the interface members in the object.
 ```c
   InterfaceName interface_struct = object->to_InterfaceName(object);
 ```
@@ -191,26 +203,53 @@ The resulting interface accessor for an interface is a struct of type `interface
    ```c
    RAISE_INTERFACE_EVENT(movable_struct, on_move, distance_moved);
    ```
+## Async methods
+Any parameterless method can be defined as an asynchronous method. When an asynchronous method is called, it will return immediately and the method will run in a separate thread.
+The declaration in the CLASS_class_name macro of an asynchronous method is exactly the same as for a synchronous method.
+To make a parameterless method async simply use ASYNC_METHOD instead of METHOD in its body definition.
+Async methods are supported if the compiler provides <threads.h> support or if the TinyCThread library files tinycthread.h and tinycthread.c are present in the ClassyC directory (source available at: https://github.com/tinycthread/tinycthread).
+If the compiler doesn't suppor threads, and the TinyCThread library is not available, asynchronous methods will be disabled and the library will fall back to synchronous methods.
+The availability of async methods can be checked with the CLASSYC_THREADS_SUPPORTED macro.
+   ```c
+   #define CLASS_AsyncSave(Base, Interface, Data, Event, Method, Override) \
+       Base(OBJECT) \
+       Data(bool, finished) \
+       Method(void, save_data)
+   ```
+   ```c
+   ASYNC_METHOD(void, save_data)
+       // save data   
+       // ...
+       self->finished = true;
+   END_ASYNC_METHOD
+   ```
+
 ## ClassyC configuration macros
 These macros can be defined before including this header to customize some of the library's naming conventions and error checking.
 - **CLASSYC_PREFIX**: Prefix for the global scope identifiers. Default: `#define CLASSYC_PREFIX ClassyC_`
 - **CLASSYC_CLASS_NAME**: Used to define the macro holding the class name, by default it is set to `CLASS` but can be changed to any other name to avoid conflicts.
+  The resulting macro name will mark the syntax used to declare classes. If CLASSYC_CLASS_NAME is not defined, the default is `CLASS`.
+  The library uses CLASSYC_CLASS_NAME internally to access the class name: CLASSYC_CLASS_NAME expands to `CLASS` (or the name defined to it) internally, which itself expands to the name of the class.
   ```c
   #define CLASSYC_CLASS_NAME NEW_CLASS_NAME
   #define NEW_CLASS_NAME Aircraft
   ```
+  ```c
+  #undef CLASSYC_CLASS_NAME
+  #define CLASS Aircraft
+  ```
 - **CLASSYC_CLASS_IMPLEMENT**: Used to define the prefix of the macro holding the class implementation. Default: `#define CLASSYC_CLASS_IMPLEMENT CLASS_`
-  If you redefine `CLASSYC_CLASS_IMPLEMENT`, you must also define the x-macro for the `OBJECT` class with the same prefix and the `Data(void, DESTRUCTOR_PTR)` member. The (Base, Interface, Data, Event, Method, Override) parameter declaration is mandatory.
+  If you redefine `CLASSYC_CLASS_IMPLEMENT`, you must also define the x-macro for the `OBJECT` class with the same prefix and the `Data(void, DESTRUCTOR_FUNCTION_POINTER)` member. The (Base, Interface, Data, Event, Method, Override) parameter declaration is mandatory.
   ```c
   #define CLASSYC_CLASS_IMPLEMENT DECLARE_CLASS_
   #define DECLARE_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
-      Data(void, DESTRUCTOR_PTR)
+      Data(void, DESTRUCTOR_FUNCTION_POINTER)
   #define DECLARE_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
   ```
   ```c
   #define CLASSYC_CLASS_IMPLEMENT CUSTOM_CLASS_
   #define CUSTOM_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
-      Data(void, DESTRUCTOR_PTR)
+      Data(void, DESTRUCTOR_FUNCTION_POINTER)
   #define CUSTOM_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
   ```
 - **CLASSYC_INTERFACE_DECLARATION**: The name of the macro that declares the interface. Default: `#define CLASSYC_INTERFACE_DECLARATION I_`
@@ -220,23 +259,25 @@ These macros can be defined before including this header to customize some of th
   ```
 - **CLASSYC_DISABLE_RUNTIME_CHECKS**: Disable runtime checks for inheritance depth. Default: not defined.
 - **CLASSYC_ENABLE_COMPILE_TIME_CHECKS**: Enable compile-time checks for inheritance depth. Default: not defined.
+- **CLASSYC_DISABLE_ASYNC_METHODS**: Disable asynchronous methods (and therefore not require thread support headers). Default: not defined.
 ## Additional notes
 - ClassyC supports automatic destruction of objects when they go out of scope if the compiler supports the `__attribute__((__cleanup__))` attribute (e.g., GCC and Clang).
 - Class definitions must be at the global scope. Objects can be declared at any scope, but can't be instantiated outside a function. Interfaces are declared in the top-level scope, before any class that uses them.
 - A class inherits all the methods, events, data members, and interfaces of its base class and, recursively, its base classes.
 - Inherited methods with no new implementation don't need to be included in `CLASS_class_name` or with `METHOD`; they are automatically inherited and available.
-- All methods — new, inherited, or overridden — self-register internally in the class constructor: no need to assign pointers or call register.
+- All methods — new, inherited, or overridden — self-register internally in the class constructor: no need to assign funtion pointers or call register functions.
 - A `self` pointer is available in all methods, constructors, destructors, and event handlers.
 - `CONSTRUCTOR` and `DESTRUCTOR` are mandatory: must be explicitly defined even if no actions are needed.
 - The `CONSTRUCTOR` can accept user-defined parameters. The `DESTRUCTOR` must be parameterless.
 - The `CONSTRUCTOR` macro must be used after the class definitions and before any methods or the `DESTRUCTOR`.
 - The `DESTRUCTOR` can be declared after the `CONSTRUCTOR` and before or after methods, but must not be declared before the `CONSTRUCTOR`.
 - `INIT_BASE` requires the arguments to match the base `CONSTRUCTOR` parameters. It should be called before the rest of the `CONSTRUCTOR` code.
-- The variable is_base is available in both CONSTRUCTOR and DESTRUCTOR to determine if the call is for a base class during inheritance initialization or cleanup.
+- The bool variable is_base is available in both CONSTRUCTOR and DESTRUCTOR to determine if the call is for a base class during inheritance initialization or cleanup.
 - `METHOD`, `CONSTRUCTOR`, `DESTRUCTOR`, and `EVENT_HANDLER` need to be used in the global scope.
+- The `NEW_INPLACE` macro will zero out the memory at `object_address`: this solves the issue generated by some compilers not setting initial value to 0 on nested anonymous structs.
 - No curly braces are needed around the body of the methods, constructors, destructors, or event handlers but can be used for clarity. Not using them won't produce unexpected behavior and is recommended for brevity.
 - Since methods are function pointers within the object, you must pass the instance explicitly when calling them.
-- Interfaces declared in base classes are automatically available in derived classes, including them again in the derived class will cause collisions.
+- Interfaces declared in base classes are automatically available in derived classes, including them again in the derived class will cause name collisions.
 - Interfaces can overlap in data members, events, and methods without causing conflicts.
 - Casting an object to any base class will give access to the subset of data members and methods present in that base class.
   The methods in the casted object will still point to the most derived implementation of the method in the inheritance chain.
@@ -246,14 +287,17 @@ These macros can be defined before including this header to customize some of th
 - Interface event members are pointers to function pointers to handle dynamic event handler registration.
 - All method pointers are set to the most derived version of the method in the inheritance chain.
 - Methods and events have only one level of indirection; the pointers are not in virtual tables.
+- The OBJECT class has a unique implementation pattern: it is the only class that has no base class and is not defined with the `CLASS_` prefix.
 - The library is optimized to reduce levels of indirection and data overhead.
 - If the compiler doesn't support automatic destruction, ensure that for every `CREATE_HEAP`, there is a corresponding `DESTROY_FREE` to prevent memory leaks.
-- Make sure to nullify all pointers to the instance after calling `DESTROY_FREE` or `DESTROY` to avoid dangling pointers. The DESTROY_FREE macro for heap-allocated objects already sets the passed pointer to NULL
+- Ensure that `DESTROY_FREE` is only used with heap-allocated objects.
+- Make sure to nullify all pointers to the instance after calling `DESTROY_FREE` or `DESTROY` to avoid dangling pointers. The DESTROY_FREE macro for heap-allocated objects already sets the passed pointer to NULL.
 - The recursive macros limit the inheritance depth to 9 levels.
   Compile-time checks are available in C11 and later and can be enabled by defining `CLASSYC_ENABLE_COMPILE_TIME_CHECKS` before including the header.
   Runtime checks are enabled by default, but can be disabled by defining `CLASSYC_DISABLE_RUNTIME_CHECKS` before including the header.
   To support deeper inheritance hierarchies, you can extend the recursive macros definitions by adding `RECURSIVE_CLASS_MEMBER_DECLARATION_10`, `RECURSIVE_CLASS_MEMBER_DECLARATION_11`, and so on, making sure that each macro expands to the next one.
+- This library does not inherently provide thread safety. Even though asynchronous methods are supported, the library does not handle synchronization. If you are using shared objects across multiple threads, ensure proper synchronization mechanisms are in place to avoid race conditions.
 
 ## Acknowledgements
 - **Unity Test**: I used Unity Test to perform some tests on ClassyC: (https://github.com/ThrowTheSwitch/Unity).
-
+- **TinyCThread**: I used TinyCThread to provide portability for thread support for asynchronous methods: (https://github.com/tinycthread/tinycthread).
