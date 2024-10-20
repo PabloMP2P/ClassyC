@@ -132,7 +132,7 @@ END_DESTRUCTOR
     Data(bool, clock_is_running) \
     Data(bool, continue_running) \
     Event(on_second_elapsed) \
-    Method(void, start_clock) \
+    Method(void, start_clock, void *arg) \
     Method(void, stop_clock)
 CONSTRUCTOR() 
     static int clock_id_counter = 0;
@@ -145,8 +145,8 @@ END_CONSTRUCTOR
 DESTRUCTOR()
     if (!is_base) num_objects_destroyed++;
 END_DESTRUCTOR
-ASYNC_METHOD(void, start_clock)
-    printf("Starting clock %d...\n", self->clock_id);
+ASYNC_METHOD(void, start_clock, void* arg)
+    printf("Starting clock %d, with parameter %d...\n", self->clock_id, *(int *)arg);
     self->clock_is_running = true;
     self->continue_running = true;
     while (self->continue_running) {
@@ -324,9 +324,10 @@ int main(void){
     REGISTER_EVENT(AsyncClass, on_second_elapsed, myasyncclass_second_elapsed, my_async_class2);
     REGISTER_EVENT(AsyncClass, on_second_elapsed, myasyncclass_second_elapsed, my_async_class3);
     printf("Main function - starting clocks...\n");
-    my_async_class1->start_clock(my_async_class1);
-    my_async_class2->start_clock(my_async_class2);
-    my_async_class3->start_clock(my_async_class3);
+    int arg1 = 11, arg2 = 22, arg3 = 33;
+    my_async_class1->start_clock(my_async_class1, &arg1);
+    my_async_class2->start_clock(my_async_class2, &arg2);
+    my_async_class3->start_clock(my_async_class3, &arg3);
     
     printf("Main function - waiting for 2 seconds...\n");
     for (int wait_count = 1; wait_count <= 2; wait_count++) {

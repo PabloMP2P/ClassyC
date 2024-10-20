@@ -75,16 +75,17 @@ ClassyC is an experimental and recreational library not intended for production 
      }
    END_METHOD
    ```
-   - **Use `ASYNC_METHOD(ret_type, method_name)` macro** to implement asynchronous methods. Note that the method must be parameterless.
+   - **Use `ASYNC_METHOD(ret_type, method_name, void *arg)` macro** to implement asynchronous methods. Note that the method must have a parameter of type and name `void *arg`.
    ```c
-   ASYNC_METHOD(void, save_data)
-       // save data   
+   ASYNC_METHOD(void, save_data, void *arg)
+       // save data 
+       write_data_to_file((my_data_struct *)arg);
        // ...
        self->finished = true;
    END_ASYNC_METHOD
    ```
    - Synchronous methods will block until they finish, and can have parameters and return values.
-   - Asynchronous methods will return immediately and must not have parameters or return values.
+   - Asynchronous methods will return immediately and must have one parameter of type `void *` and name `arg`. Asynchronous methods can't have return values.
 7. **Raise events from any method using `RAISE_EVENT(object, event_name[, args])`**. If the event has a registered handler, it will be called.
 
 ## Using a class
@@ -207,9 +208,10 @@ The resulting interface accessor for an interface is a struct of type `interface
    RAISE_INTERFACE_EVENT(movable_struct, on_move, distance_moved);
    ```
 ## Async methods
-Any parameterless method can be defined as an asynchronous method. When an asynchronous method is called, it will return immediately and the method will run in a separate thread.
+A method can be defined as an asynchronous method if it has no return type, and has one parameter of type `void *` and name `arg`. When an asynchronous method is called, it will return immediately and the method will run in a separate thread.
 The declaration in the CLASS_class_name macro of an asynchronous method is exactly the same as for a synchronous method.
-To make a parameterless method async simply use ASYNC_METHOD instead of METHOD in its body definition.
+To make a method async simply use ASYNC_METHOD instead of METHOD in its body definition.
+The self pointer and the `void *arg` parameter are available in the asynchronous method body.
 Async methods are supported if the compiler provides <threads.h> support or if the TinyCThread library files tinycthread.h and tinycthread.c are present in the ClassyC directory (source available at: https://github.com/tinycthread/tinycthread).
 If the compiler doesn't suppor threads, and the TinyCThread library is not available, asynchronous methods will be disabled and the library will fall back to synchronous methods.
 The availability of async methods can be checked with the CLASSYC_THREADS_SUPPORTED macro.
@@ -220,8 +222,9 @@ The availability of async methods can be checked with the CLASSYC_THREADS_SUPPOR
        Method(void, save_data)
    ```
    ```c
-   ASYNC_METHOD(void, save_data)
+   ASYNC_METHOD(void, save_data, void *arg)
        // save data   
+       write_data_to_file((my_data_struct *)arg);
        // ...
        self->finished = true;
    END_ASYNC_METHOD
@@ -299,7 +302,10 @@ These macros can be defined before including this header to customize some of th
   Compile-time checks are available in C11 and later and can be enabled by defining `CLASSYC_ENABLE_COMPILE_TIME_CHECKS` before including the header.
   Runtime checks are enabled by default, but can be disabled by defining `CLASSYC_DISABLE_RUNTIME_CHECKS` before including the header.
   To support deeper inheritance hierarchies, you can extend the recursive macros definitions by adding `RECURSIVE_CLASS_MEMBER_DECLARATION_10`, `RECURSIVE_CLASS_MEMBER_DECLARATION_11`, and so on, making sure that each macro expands to the next one.
-- This library does not inherently provide thread safety. Even though asynchronous methods are supported, the library does not handle synchronization. If you are using shared objects across multiple threads, ensure proper synchronization mechanisms are in place to avoid race conditions.
+- Asynchronous methods don't have built-in control over the thread or the data they are handling.
+- If you use asynchronous methods, ensure the number of threads does not exceed the system's capacity.
+- If you are using shared objects across multiple threads, ensure proper synchronization mechanisms are in place to avoid race conditions.
+- This library does not inherently provide thread safety.
 
 ## Acknowledgements
 - **Unity Test**: I used Unity Test to perform some tests on ClassyC: (https://github.com/ThrowTheSwitch/Unity).
@@ -406,7 +412,7 @@ These macros can be defined before including this header to customize some of th
             #include "tinycthread.h"
         #else
             /* __has_include extension available, we're including the library only if it exists */
-            #if __has_include("tinycthread.h") && __has_include(<stdint.h>)
+            #if __has_include("tinycthread.h")
                 #include "tinycthread.h"
             #else
                 #define CLASSYC_THREADS_SUPPORTED 0
@@ -781,25 +787,46 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
 
 /* Threads support for asynchronous methods */
 #if CLASSYC_THREADS_SUPPORTED
-#define ASYNC_METHOD(ret_type, method_name) \
-    /* thread function prototype */ \
-    static int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *arg);\
-    /* Wrapper function that starts the thread */ \
-    static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void) { \
+/* Structure to pass arguments to the thread function: the user's method code has access to self (casted from self_void) and arg */
+typedef struct {
+    void *self_void;
+    void *arg;
+} ADD_PREFIX(AsyncMethodArgs);
+#define ASYNC_METHOD(ret_type, method_name, void_ptr_arg) \
+    /* Thread function prototype */ \
+    static int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct); \
+    \
+    /* Wrapper function that starts the thread with arguments */ \
+    static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, void *arg) { \
         CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void; \
+        /* Allocate and assign arguments */ \
+        ADD_PREFIX(AsyncMethodArgs) *args_struct = calloc(1, sizeof(ADD_PREFIX(AsyncMethodArgs))); \
+        if (!args_struct) { \
+            fprintf(stderr, "Error: Failed to allocate memory for async method arguments '%s'.\n", #method_name); \
+            return; \
+        } \
+        args_struct->self_void = self_void; \
+        args_struct->arg = arg; \
         /* Start the thread */ \
         thrd_t thread_id; \
-        if (thrd_create(&thread_id, PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread), self) != thrd_success) { \
+        if (thrd_create(&thread_id, PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread), args_struct) != thrd_success) { \
             /* Handle thread creation error */ \
             fprintf(stderr, "Error: Failed to create thread for method '%s'.\n", #method_name); \
+            free(args_struct); \
         } else { \
             thrd_detach(thread_id); \
         } \
         /* Return immediately */ \
-    }    /* Thread function where the user's code will run */ \
-    static int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *arg) { \
-        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)arg; \
-        /* User's code starts here */ 
+    } \
+    \
+    /* Thread function where the user's code will run */ \
+    static int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct) { \
+        ADD_PREFIX(AsyncMethodArgs) *args_struct = (ADD_PREFIX(AsyncMethodArgs) *)void_arg_struct; \
+        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)args_struct->self_void; \
+        void *arg = args_struct->arg; \
+        /* Free the arguments structure */ \
+        free(args_struct); \
+        /* User's code starts here */  
 #define END_ASYNC_METHOD \
         /* User's code ends here */ \
         return 0; \
@@ -807,9 +834,10 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
    
 #else
 /* Synchronous fallback if threads are not supported */
-#define ASYNC_METHOD(ret_type, method_name) \
+#define ASYNC_METHOD(ret_type, method_name, void_ptr_arg) \
     /* Asynchronous methods not supported by the compiler: Synchronous method fallback */ \
-    METHOD(ret_type, method_name)
+    METHOD(ret_type, method_name, void_ptr_arg) \
+        /* User method code, with access to arg */
 #define END_ASYNC_METHOD \
     END_METHOD
 #endif
