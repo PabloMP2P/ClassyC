@@ -347,7 +347,7 @@ These macros can be defined before including this header to customize some of th
   To support deeper inheritance hierarchies, you can extend the recursive macros definitions by adding `RECURSIVE_CLASS_MEMBER_DECLARATION_10`, `RECURSIVE_CLASS_MEMBER_DECLARATION_11`, and so on, making sure that each macro expands to the next one.
 - Asynchronous methods will release the thread and the resources when they finish.
 - When using asynchronous methods, ensure the number of threads does not exceed the system's capacity.
-- If you are using shared objects across multiple threads, ensure they are protected using mutexes or make sureother proper synchronization mechanisms are in place to avoid race conditions.
+- If you are using shared objects across multiple threads, ensure they are protected using LOCK_OBJECT and UNLOCK_OBJECT or make sure other proper synchronization mechanisms are in place to avoid race conditions.
 
 
 ## Acknowledgements
