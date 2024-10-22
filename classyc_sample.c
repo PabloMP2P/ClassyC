@@ -132,7 +132,7 @@ END_DESTRUCTOR
     Data(bool, clock_is_running) \
     Data(bool, continue_running) \
     Event(on_second_elapsed) \
-    Method(void, start_clock, void *arg) \
+    Method(thrd_t, start_clock, void *arg) \
     Method(void, stop_clock)
 CONSTRUCTOR() 
     static int clock_id_counter = 0;
@@ -145,7 +145,7 @@ END_CONSTRUCTOR
 DESTRUCTOR()
     if (!is_base) num_objects_destroyed++;
 END_DESTRUCTOR
-ASYNC_METHOD(void, start_clock, void* arg)
+ASYNC_METHOD(thrd_t, start_clock, void* arg)
     printf("Starting clock %d, with parameter %d...\n", self->clock_id, *(int *)arg);
     self->clock_is_running = true;
     self->continue_running = true;
@@ -153,24 +153,27 @@ ASYNC_METHOD(void, start_clock, void* arg)
         /* Wait for 1 second */
         clock_t start_time = clock();
         while (clock() - start_time < 1 * CLOCKS_PER_SEC) {
-            /* Wait unless the clock is stopped */
+            /* Wait for 1 second unless the clock is stopped */
             if (!self->continue_running) break;
         }
         if (!self->continue_running) break;
         self->total_seconds_elapsed++;
         RAISE_EVENT(self, on_second_elapsed);
 
+        if (self->total_seconds_elapsed >= *((int *)arg)) {
+            printf("Clock %d reached %d seconds, stopping...\n", self->clock_id, *((int *)arg));
+            break;
+        }
 #if CLASSYC_THREADS_SUPPORTED == 0
         // The compiler doesn't support threads, and the tinycthread library is not available,
-        // avoid infinite loop by exiting the method
-        printf("Method: asyncronous methods not supported, breaking infinite loop in clock %d.\n", self->clock_id);
-        break;
+        // You can use CLASSYC_THREADS_SUPPORTED to change the program's behavior
 #endif
     }
     printf("Clock %d stopped\n", self->clock_id);
     self->continue_running = true;
     self->clock_is_running = false;
 END_ASYNC_METHOD
+
 METHOD(void, stop_clock)
     if (self->clock_is_running) {
         printf("Stopping clock %d...\n", self->clock_id);
@@ -324,13 +327,13 @@ int main(void){
     REGISTER_EVENT(AsyncClass, on_second_elapsed, myasyncclass_second_elapsed, my_async_class2);
     REGISTER_EVENT(AsyncClass, on_second_elapsed, myasyncclass_second_elapsed, my_async_class3);
     printf("Main function - starting clocks...\n");
-    int arg1 = 11, arg2 = 22, arg3 = 33;
+    int arg1 = 1, arg2 = 2, arg4 = 4;
     my_async_class1->start_clock(my_async_class1, &arg1);
     my_async_class2->start_clock(my_async_class2, &arg2);
-    my_async_class3->start_clock(my_async_class3, &arg3);
+    my_async_class3->start_clock(my_async_class3, &arg4);
     
-    printf("Main function - waiting for 2 seconds...\n");
-    for (int wait_count = 1; wait_count <= 2; wait_count++) {
+    printf("Main function - waiting for 3 seconds...\n");
+    for (int wait_count = 1; wait_count <= 3; wait_count++) {
         clock_t start_last_wait = clock();
         while (clock() - start_last_wait < 1 * CLOCKS_PER_SEC) {
             /* Wait for threads to finish */
@@ -347,6 +350,12 @@ int main(void){
         /* Wait for threads to finish */
     } while (my_async_class1->clock_is_running || my_async_class2->clock_is_running || my_async_class3->clock_is_running);
     printf("Main function - all async methods finished\n");
+    printf("Main function - total seconds elapsed in clock 1: %d\n", my_async_class1->total_seconds_elapsed);
+    printf("Main function - total seconds elapsed in clock 2: %d\n", my_async_class2->total_seconds_elapsed);
+    printf("Main function - total seconds elapsed in clock 3: %d\n", my_async_class3->total_seconds_elapsed);
+    printf("Starting clock 1 with AWAIT...\n");
+    AWAIT(my_async_class1->start_clock(my_async_class1, &arg1));
+    printf("Main function - total seconds elapsed in clock 1: %d\n", my_async_class1->total_seconds_elapsed);
 
 #if CLASSYC_AUTO_DESTROY_SUPPORTED == 0
     // Compiler doesn't support auto-destruction; destroy the objects manually

@@ -18,7 +18,8 @@ ClassyC is an experimental and recreational library not intended for production 
    - Interfaces, data members, events, and methods are inherited from the base class (and its base classes, recursively).
    - Classes implement interfaces. When a class declares that it uses an interface, it must also declare and define all the members (data, events, and methods) of that interface, or inherit them from a parent class.
    - Overridden methods must exactly match the signatures (return type, number of parameters, and parameter types) of the original method to ensure proper behavior.
-   - Users should not redeclare any members or interfaces already declared in base classes (name collision will occur).
+   - Users should not redeclare any members already declared in base classes (name collision will occur).
+   - All classes must inherit from another class, or the OBJECT class, so all objects contain the OBJECT class members.
    Syntax:
    - `Base(base_class_name)` - To declare the base class (use `OBJECT` if it has no base class).
    - `Interface(interface_name)` - To declare an interface.
@@ -75,9 +76,9 @@ ClassyC is an experimental and recreational library not intended for production 
      }
    END_METHOD
    ```
-   - **Use `ASYNC_METHOD(ret_type, method_name, void *arg)` macro** to implement asynchronous methods. Note that the method must have a parameter of type and name `void *arg`.
+   - **Use `ASYNC_METHOD(thrd_t, method_name, void *arg)` macro** to implement asynchronous methods. Note that the method must have a return type of `thrd_t` and have a parameter of type and name `void *arg`.
    ```c
-   ASYNC_METHOD(void, save_data, void *arg)
+   ASYNC_METHOD(thrd_t, save_data, void *arg)
        // save data 
        write_data_to_file((my_data_struct *)arg);
        // ...
@@ -85,7 +86,7 @@ ClassyC is an experimental and recreational library not intended for production 
    END_ASYNC_METHOD
    ```
    - Synchronous methods will block until they finish, and can have parameters and return values.
-   - Asynchronous methods will return immediately and must have one parameter of type `void *` and name `arg`. Asynchronous methods can't have return values.
+   - Asynchronous methods will return immediately and must have one parameter of type `void *` and name `arg`. Asynchronous methods return the thread ID, which can be used with the `AWAIT` macro to wait for the method to finish.
 7. **Raise events from any method using `RAISE_EVENT(object, event_name[, args])`**. If the event has a registered handler, it will be called.
 
 ## Using a class
@@ -98,7 +99,7 @@ ClassyC is an experimental and recreational library not intended for production 
    // Alternative syntax without automatic destruction:
    Car *my_car = NEW_ALLOC(Car, 10000);
    ```
-   Or use `CREATE_STACK(class_name, object_ptr, optional_constructor_parameters)` to create a new object in the stack.
+   Or use `CREATE_STACK(class_name, object_name, optional_constructor_parameters)` to create a new object in the stack.
    ```c
    CREATE_STACK(Elephant, my_elephant);  // Simple syntax with automatic destruction
    // Alternative syntax the above expands to:
@@ -153,6 +154,7 @@ ClassyC is an experimental and recreational library not intended for production 
     // No need to set my_car to NULL; DESTROY_FREE already does that.
     ```
 ## Creating and using interfaces
+Interfaces define contracts that implementing classes must fulfill. When implementing an interface, the class must declare and define all interface members unless they are inherited from a base class.
 1. **Define the x-macro `I_interface_name(Data, Event, Method)` to declare a new interface and all its members.**
    - Syntax:
      - `Data(member_type, member_name)` - To declare a data member.
@@ -197,8 +199,8 @@ The resulting interface accessor for an interface is a struct of type `interface
       RAISE_INTERFACE_EVENT(object1, on_move, distance_moved);
       RAISE_INTERFACE_EVENT(object2, on_move, distance_moved);
    }
-   // Usage: in this case we use two objects of different types. Also, my_car is allocated in the heap and my_elephant in the stack.
-   swap_movables_position(my_car->to_Moveable(my_car), my_elephant.to_Moveable(&my_elephant));
+   // Usage: in this case we use two objects of different types.
+   swap_movables_position(my_car->to_Moveable(my_car), my_elephant.to_Moveable(&my_elephant)); // Also note that my_elephant is in the stack.
    ```
 5. **To raise an event from an interface, use `RAISE_INTERFACE_EVENT(as_interface_obj, event_name[, args])`.**
    - When working with interfaces, events are accessed through pointers to function pointers. Use RAISE_INTERFACE_EVENT to correctly handle the additional indirection.
@@ -208,28 +210,68 @@ The resulting interface accessor for an interface is a struct of type `interface
    RAISE_INTERFACE_EVENT(movable_struct, on_move, distance_moved);
    ```
 ## Async methods
-A method can be defined as an asynchronous method if it has no return type, and has one parameter of type `void *` and name `arg`. When an asynchronous method is called, it will return immediately and the method will run in a separate thread.
+A method can be defined as an asynchronous method if it has `thrd_t` return type, and has one parameter of type `void *` and name `arg`. When an asynchronous method is called, it will return the thread ID immediately and the method will run in a separate thread.
 The declaration in the CLASS_class_name macro of an asynchronous method is exactly the same as for a synchronous method.
-To make a method async simply use ASYNC_METHOD instead of METHOD in its body definition.
+To make a method async simply use `ASYNC_METHOD` instead of `METHOD` in its body definition.
 The self pointer and the `void *arg` parameter are available in the asynchronous method body.
+To return from an asynchronous method beforehand, return the value of the `EXIT_ASYNC` macro: `Return EXIT_ASYNC;` This ensures that the thread is detached and the memory allocated for the arguments structure is freed.
 Async methods are supported if the compiler provides <threads.h> support or if the TinyCThread library files tinycthread.h and tinycthread.c are present in the ClassyC directory (source available at: https://github.com/tinycthread/tinycthread).
-If the compiler doesn't suppor threads, and the TinyCThread library is not available, asynchronous methods will be disabled and the library will fall back to synchronous methods.
+If the compiler doesn't support threads, and the TinyCThread library is not available, asynchronous methods will be disabled and the library will fall back to synchronous methods.
 The availability of async methods can be checked with the CLASSYC_THREADS_SUPPORTED macro.
    ```c
    #define CLASS_AsyncSave(Base, Interface, Data, Event, Method, Override) \
        Base(OBJECT) \
        Data(bool, finished) \
-       Method(void, save_data)
+       Method(thrd_t, save_data, void *arg)
    ```
    ```c
-   ASYNC_METHOD(void, save_data, void *arg)
+   ASYNC_METHOD(thrd_t, save_data, void *arg)
        // save data   
        write_data_to_file((my_data_struct *)arg);
        // ...
        self->finished = true;
    END_ASYNC_METHOD
    ```
+Use the `AWAIT` macro to pause the current thread until the asynchronous method finishes. This is particularly useful when subsequent operations depend on the result of an asynchronous call.
+Use the thread identifier returned by the asynchronous method with the `AWAIT` macro.
+```c
+AWAIT(my_car->save_data(my_car, data_arg));
+```
+or
+```c
+// Invoke an asynchronous method
+thrd_t thread_id = my_car->save_data(my_car, data_arg);
 
+// Wait for the asynchronous method to complete
+AWAIT(thread_id);
+
+// Continue with operations that depend on the completion of save_data
+if (my_car->finished) {
+    printf("Data saved successfully.\n");
+}
+```
+Use the `THREAD_SLEEP` macro to pause the current thread for a given duration.
+```c
+ASYNC_METHOD(thrd_t, async_method, void *arg)
+    // ...
+    THREAD_SLEEP(1000); // Stop this method for 1000 milliseconds (1 second), then continue
+    // ...
+END_ASYNC_METHOD
+```
+## Synchronization and object locking
+To ensure thread safety when working with shared resources across multiple threads, ClassyC provides an easy to use mutex support through predefined macros.
+Every object has a `mutex` data member of type `mtx_t`, which can be used to synchronize access to the object.
+Lock an object to read or write to it in a thread-safe way using the `LOCK_OBJECT` macro.
+Unlock an object using the `UNLOCK_OBJECT` macro.
+    ```c
+    LOCK_OBJECT(my_app);
+    my_app->do_something();
+    UNLOCK_OBJECT(my_app);
+    ```
+- Always acquire a lock using `LOCK_OBJECT(object_ptr)` before accessing or modifying shared data members. Release the lock immediately after the critical section using `UNLOCK_OBJECT(object_ptr)`.
+- Minimize the scope of locked sections to reduce contention.
+- Avoid deadlocks by maintaining a consistent locking order across different objects and methods.
+- Consider using higher-level and/or lower-level synchronization mechanisms if necessary.
 ## ClassyC configuration macros
 These macros can be defined before including this header to customize some of the library's naming conventions and error checking.
 - **CLASSYC_PREFIX**: Prefix for the global scope identifiers. Default: `#define CLASSYC_PREFIX ClassyC_`
@@ -249,13 +291,13 @@ These macros can be defined before including this header to customize some of th
   ```c
   #define CLASSYC_CLASS_IMPLEMENT DECLARE_CLASS_
   #define DECLARE_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
-      Data(void, DESTRUCTOR_FUNCTION_POINTER)
+      Data(void, DESTRUCTOR_FUNCTION_POINTER) Data(mtx_t, mutex)
   #define DECLARE_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
   ```
   ```c
   #define CLASSYC_CLASS_IMPLEMENT CUSTOM_CLASS_
   #define CUSTOM_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
-      Data(void, DESTRUCTOR_FUNCTION_POINTER)
+      Data(void, DESTRUCTOR_FUNCTION_POINTER) Data(mtx_t, mutex)
   #define CUSTOM_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
   ```
 - **CLASSYC_INTERFACE_DECLARATION**: The name of the macro that declares the interface. Default: `#define CLASSYC_INTERFACE_DECLARATION I_`
@@ -294,6 +336,7 @@ These macros can be defined before including this header to customize some of th
 - All method pointers are set to the most derived version of the method in the inheritance chain.
 - Methods and events have only one level of indirection; the pointers are not in virtual tables.
 - The OBJECT class has a unique implementation pattern: it is the only class that has no base class and is not defined with the `CLASS_` prefix.
+- The OBJECT class is the base for all classes, and ensures that every object has the fundamental capabilities required for ClassyC's operation, such as proper destruction and synchronization.
 - The library is optimized to reduce levels of indirection and data overhead.
 - If the compiler doesn't support automatic destruction, ensure that for every `CREATE_HEAP`, there is a corresponding `DESTROY_FREE` to prevent memory leaks.
 - Ensure that `DESTROY_FREE` is only used with heap-allocated objects.
@@ -302,10 +345,10 @@ These macros can be defined before including this header to customize some of th
   Compile-time checks are available in C11 and later and can be enabled by defining `CLASSYC_ENABLE_COMPILE_TIME_CHECKS` before including the header.
   Runtime checks are enabled by default, but can be disabled by defining `CLASSYC_DISABLE_RUNTIME_CHECKS` before including the header.
   To support deeper inheritance hierarchies, you can extend the recursive macros definitions by adding `RECURSIVE_CLASS_MEMBER_DECLARATION_10`, `RECURSIVE_CLASS_MEMBER_DECLARATION_11`, and so on, making sure that each macro expands to the next one.
-- Asynchronous methods don't have built-in control over the thread or the data they are handling.
-- If you use asynchronous methods, ensure the number of threads does not exceed the system's capacity.
-- If you are using shared objects across multiple threads, ensure proper synchronization mechanisms are in place to avoid race conditions.
-- This library does not inherently provide thread safety.
+- Asynchronous methods will release the thread and the resources when they finish.
+- When using asynchronous methods, ensure the number of threads does not exceed the system's capacity.
+- If you are using shared objects across multiple threads, ensure they are protected using mutexes or make sureother proper synchronization mechanisms are in place to avoid race conditions.
+
 
 ## Acknowledgements
 - **Unity Test**: I used Unity Test to perform some tests on ClassyC: (https://github.com/ThrowTheSwitch/Unity).
@@ -352,10 +395,11 @@ These macros can be defined before including this header to customize some of th
 #endif
 
 /* The name of the macro that declares the class declaration prefix: by default it is CLASS_ (resulting in CLASS_class_name) */
-/* If this is defined, the empty prefix_OBJECT(Base, Interface, Data, Event, Method, Override) macro must also be defined with the same prefix and the Data(void, DESTRUCTOR_FUNCTION_POINTER) member.*/
+/* If this is defined, the empty prefix_OBJECT(Base, Interface, Data, Event, Method, Override) macro must also be defined with the same prefix and the Data(void, DESTRUCTOR_FUNCTION_POINTER) and Data(mtx_t, mutex) members.*/
+/* The prefix_OBJECT macro is used when traversing the inheritance tree to declare a new class struct */
 #ifndef CLASSYC_CLASS_IMPLEMENT
    #define CLASSYC_CLASS_IMPLEMENT CLASS_
-   #define CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) Data(void, DESTRUCTOR_FUNCTION_POINTER)
+   #define CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) Data(void, DESTRUCTOR_FUNCTION_POINTER) Data(mtx_t, mutex)
 #endif // CLASSYC_CLASS_IMPLEMENT
 
 #define GET_IMPLEMENTS(class_name)CONCAT(CLASSYC_CLASS_IMPLEMENT, class_name)
@@ -415,7 +459,9 @@ These macros can be defined before including this header to customize some of th
             #if __has_include("tinycthread.h")
                 #include "tinycthread.h"
             #else
-                #define CLASSYC_THREADS_SUPPORTED 0
+                /* CLASSYC_DISABLE_ASYNC_METHODS was 0, but the compiler doesn't support threads and tinycthread.h is not available */
+                /* Hopefully this redefine will also trigger a compiler warning */
+                #define CLASSYC_THREADS_SUPPORTED 0 /* Warning: threads not supported! */
             #endif
         #endif
     #else
@@ -426,6 +472,70 @@ These macros can be defined before including this header to customize some of th
 #endif
 
 
+#if CLASSYC_THREADS_SUPPORTED == 0
+    /* Threads not supported: dummy definitions and return values to make sure no compilation errors are generated */
+    typedef void *thrd_t;
+    typedef int mtx_t;
+    /* Thread return values */
+    #define thrd_error    0 /**< The requested operation failed */
+    #define thrd_success  1 /**< The requested operation succeeded */
+    #define thrd_timedout 2 /**< The time specified in the call was reached without acquiring the requested resource */
+    #define thrd_busy     3 /**< The requested operation failed because a resource requested by a test and return function is already in use */
+    #define thrd_nomem    4 /**< The requested operation failed because it was unable to allocate memory */
+    /* Mutex types */
+    #define mtx_plain     0
+    #define mtx_timed     1
+    #define mtx_recursive 2
+    #define CLASSYC_MUTEX_INIT(mutex, mutex_type) (mutex = 0)
+    #define CLASSYC_MUTEX_DESTROY(mutex) (mutex = 1)
+    #define CLASSYC_THREAD_CREATE(thread_id, method_thread_function, args_struct) \
+        thread_id = &method_thread_function(args_struct)
+    #define CLASSYC_THREAD_DETACH(thread_id)
+    /* Macros called by the user */
+    /* portable THREAD_SLEEP when threads are not supported */
+    #ifdef _WIN32
+        #include <windows.h>
+        #define THREAD_SLEEP(milliseconds) Sleep(milliseconds)
+    #elif __unix
+        #define _POSIX_C_SOURCE 199309L // or greater
+        #include <time.h>
+        #define THREAD_SLEEP(milliseconds) do {            \
+            /* convert milliseconds to seconds and nanoseconds */ \
+            long long seconds = milliseconds / 1000; \
+            long long nanoseconds = (milliseconds % 1000) * 1000000; \
+            struct timespec duration = {seconds, nanoseconds}; \
+            nanosleep(&duration, NULL);           \
+        } while (0)
+    #else
+        /* Unknown system and threads are not supported */
+        #define THREAD_SLEEP(milliseconds) do { (void)(milliseconds); } while (0) 
+    #endif
+    #define LOCK_OBJECT(object_address) (object_address->mutex = 1)
+    #define UNLOCK_OBJECT(object_address) (object_address->mutex = 0)
+#elif CLASSYC_THREADS_SUPPORTED == 1
+    #define CLASSYC_MUTEX_INIT(mutex, mutex_type) mtx_init(&mutex, mutex_type)
+    #define CLASSYC_MUTEX_DESTROY(mutex) mtx_destroy(&mutex)
+    #define CLASSYC_THREAD_CREATE(thread_id, method_thread_function, args_struct) \
+        thrd_create(&thread_id, method_thread_function, args_struct)
+    #define CLASSYC_THREAD_DETACH(thread_id) thrd_detach(thread_id)
+    /* Macros called by the user */
+    #define THREAD_SLEEP(milliseconds) \
+    do { \
+        /* convert milliseconds to seconds and nanoseconds */ \
+        long long seconds = milliseconds / 1000; \
+        long long nanoseconds = (milliseconds % 1000) * 1000000; \
+        struct timespec duration = {seconds, nanoseconds}; \
+        thrd_sleep(&duration, NULL); \
+    } while (0)
+    #define LOCK_OBJECT(object_address) mtx_lock(&object_address->mutex)
+    #define UNLOCK_OBJECT(object_address) mtx_unlock(&object_address->mutex)
+    /* Structure to pass arguments to the method thread function: it'll be given to the user's method code extracting self and arg */
+    typedef struct {
+        void *self_void;
+        void *arg;
+        thrd_t thread_id;
+    } ADD_PREFIX(AsyncArgs);    
+#endif
 
 /* Header of the class struct */
 /* Declare a class struct and its type name */
@@ -444,36 +554,38 @@ These macros can be defined before including this header to customize some of th
     /* The interface cast function will return an interface struct with pointers to the class members */ \
     interface_name (*CONCAT(to_, interface_name))(void *self_void);
 
-/* Every class has a destructor function pointer */
-/* It is introduced as a data member of the OBJECT class struct that is inherited by all classes */
+/* Every class has a destructor function pointer and a mutex for thread safety */
+/* They are introduced as data members of the OBJECT class struct that is inherited by all classes */
 #define DESTRUCTOR_FUNCTION_POINTER (*_destructor)(void *self_void)
 
-/* OBJECT class: the base class of all classes. It only contains the destructor function pointer. */
+/* OBJECT class: the base class of all classes. It only contains the destructor function pointer and a mutex for thread safety. */
 /* OBJECT is a fixed name and doesn't use the CLASSYC_CLASS_NAME macro */ 
 /* OBJECT class struct */
 STRUCT_HEADER(OBJECT) {
     /* Having a pointer to the destructor function helps DESTROY calling it without knowing the class name */
     /* It is inherited by all classes, so every class has a pointer to the destructor function. Returns void. */
-    WRITE_DATA_MEMBER(void, DESTRUCTOR_FUNCTION_POINTER) \
+    WRITE_DATA_MEMBER(void, DESTRUCTOR_FUNCTION_POINTER)
+    /* Mutex for thread safety: every instance has its own mutex to automate locking and unlocking */
+    WRITE_DATA_MEMBER(mtx_t, mutex)
 };
 /* Prototypes for OBJECT class functions */
-static void *PREFIXCONCAT(OBJECT, _constructor)(void *self_void);
-static void *PREFIXCONCAT(OBJECT, _user_constructor)(bool is_base, void *self_void);
-static void PREFIXCONCAT(OBJECT, _destructor)(void *self_void);
-static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void);
+static inline void *PREFIXCONCAT(OBJECT, _constructor)(void *self_void);
+static inline void *PREFIXCONCAT(OBJECT, _user_constructor)(bool is_base, void *self_void);
+static inline void PREFIXCONCAT(OBJECT, _destructor)(void *self_void);
+static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void);
 /* OBJECT class constructor function: only sets the destructor function pointer */
-static void *PREFIXCONCAT(OBJECT, _constructor)(void *self_void) { 
+static inline void *PREFIXCONCAT(OBJECT, _constructor)(void *self_void) { 
     OBJECT *self = (OBJECT *)self_void; 
     self->_destructor = PREFIXCONCAT(OBJECT, _destructor); 
     /* Should not be called directly */ 
     return self; 
 }
-static void *PREFIXCONCAT(OBJECT, _user_constructor)(bool is_base, void *self_void) {
+static inline void *PREFIXCONCAT(OBJECT, _user_constructor)(bool is_base, void *self_void) {
     return self_void;
 }
 /* OBJECT class destructor function */
-static void PREFIXCONCAT(OBJECT, _destructor)(void *self_void) { /* OBJECT destructor does nothing */ }
-static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void) { /* OBJECT destructor does nothing */ }
+static inline void PREFIXCONCAT(OBJECT, _destructor)(void *self_void) { /* OBJECT destructor does nothing */ }
+static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void) { /* OBJECT destructor does nothing */ }
 
 /* BASIC MACROS */
 /* Get the name of the base class from the IMPLEMENTS macro */
@@ -541,7 +653,7 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
 
 /* New and overridden method function prototypes */
 #define WRITE_METHOD_FUNC_PROTOTYPE(ret_type, method_name, ...) \
-    static ret_type PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, ##__VA_ARGS__); 
+    static inline ret_type PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, ##__VA_ARGS__); 
 #define X_METHOD_FUNC_PROTOTYPES(class_name) \
     /* Writes the method prototypes for the class: new methods and overridden methods */ \
     GET_IMPLEMENTS(class_name)(WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_METHOD_FUNC_PROTOTYPE, WRITE_METHOD_FUNC_PROTOTYPE) 
@@ -679,17 +791,17 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
         RECURSIVE_CLASS_MEMBER_DECLARATIONS(CLASSYC_CLASS_NAME) \
     } ; \
     /* Prototypes for the destructor and constructor class functions */ \
-    static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(void *self_void); \
-    static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _ptr_destructor)(CLASSYC_CLASS_NAME **self_ptr); \
-    static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(bool is_base, void *self_void); \
-    static void * PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(void *self_void); \
-    static void * PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(bool is_base, void *self_void, ##__VA_ARGS__); \
+    static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(void *self_void); \
+    static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _ptr_destructor)(CLASSYC_CLASS_NAME **self_ptr); \
+    static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(bool is_base, void *self_void); \
+    static inline void * PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(void *self_void); \
+    static inline void * PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(bool is_base, void *self_void, ##__VA_ARGS__); \
     /* Write the prototypes for new and overridden methods */ \
     X_METHOD_FUNC_PROTOTYPES(CLASSYC_CLASS_NAME) \
     /* Interface cast functions */ \
     RECURSIVE_INTERFACE_CAST_FUNCTIONS(CLASSYC_CLASS_NAME) \
     /* Constructor function */ \
-    static void* PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(void * self_void) { \
+    static inline void* PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(void * self_void) { \
         /* This function is used to allocate memory for the object (if needed) and set its basic function and method pointers */ \
         /* Runtime check for inheritance depth: disable by defining CLASSYC_DISABLE_RUNTIME_CHECKS */ \
         CLASSYC_CHECK_INHERITANCE_DEPTH\
@@ -715,10 +827,12 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
         GET_IMPLEMENTS(CLASSYC_CLASS_NAME)(WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, SET_METHOD_PTR, SET_METHOD_PTR) \
         /* Register interface cast functions */ \
         RECURSIVE_REGISTER_INTERFACE_CAST_FUNCTIONS(CLASSYC_CLASS_NAME) \
+        /* Initialize the mutex for thread safety */ \
+        CLASSYC_MUTEX_INIT(self->mutex, mtx_plain); \
         return self; \
     } \
     /* User constructor function */ \
-    static void* PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(bool is_base, void * self_void, ##__VA_ARGS__) { \
+    static inline void* PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(bool is_base, void * self_void, ##__VA_ARGS__) { \
         if (!is_base) { \
             /* Only for the instanced objects, not for the base classes: run the 'real' constructor */\
              self_void = PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(self_void); \
@@ -738,7 +852,7 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
 #define DESTRUCTOR() \
      /* Contains the destructor code for the class. Then on END_DESTRUCTOR invokes the base class destructor */\
      /* _ptr_destructor is used when a pointer marked for auto-destruction gets out of scope */\
-    static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _ptr_destructor)(CLASSYC_CLASS_NAME **self_ptr) { \
+    static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _ptr_destructor)(CLASSYC_CLASS_NAME **self_ptr) { \
            /* Call the destructor for the class */ \
            PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(*self_ptr); \
            /* Free the memory allocated for the object and nullity it */ \
@@ -747,7 +861,7 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
                *self_ptr = NULL; \
            } \
     }\
-    static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(void *self_void) { \
+    static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(void *self_void) { \
         /* In order to prevent multiple calls to the destructor, we use the _destructor pointer as a marker */ \
         CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void; \
         if (!self || !self->_destructor) { \
@@ -758,8 +872,10 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
         } \
         /* Call user destructor */ \
         PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(IS_BASE_FALSE, self); \
+        /* Destroy the mutex for thread safety */ \
+        CLASSYC_MUTEX_DESTROY(self->mutex); \
     } \
-    static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(bool is_base, void *self_void) { \
+    static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(bool is_base, void *self_void) { \
         if (!self_void) { \
             /* NULL self_void can't be casted or processed */ \
             return; \
@@ -772,14 +888,14 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
         if (self) { \
             /* Call the base class destructor with is_base set to true */ \
             PREFIXCONCAT(X_GET_BASE_NAME(CLASSYC_CLASS_NAME), _user_destructor)(IS_BASE_TRUE, self); \
-            /* Mark the destructor as called by setting the function pointer to NULL */\
+            /* Mark the destructor as called by setting the function pointer to NULL. Destructors are called once. */\
             self->_destructor = NULL; \
         } \
     }
 
 /* METHOD CREATION */
 #define METHOD(ret_type, method_name, ...) \
-    static ret_type PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, ##__VA_ARGS__) { \
+    static inline ret_type PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, ##__VA_ARGS__) { \
         CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void; \
         /* User method code */
 #define END_METHOD \
@@ -787,68 +903,75 @@ static void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void
 
 /* Threads support for asynchronous methods */
 #if CLASSYC_THREADS_SUPPORTED
-/* Structure to pass arguments to the thread function: the user's method code has access to self (casted from self_void) and arg */
-typedef struct {
-    void *self_void;
-    void *arg;
-} ADD_PREFIX(AsyncMethodArgs);
 #define ASYNC_METHOD(ret_type, method_name, void_ptr_arg) \
     /* Thread function prototype */ \
-    static int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct); \
+    static inline int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct); \
     \
     /* Wrapper function that starts the thread with arguments */ \
-    static void PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, void *arg) { \
+    static inline thrd_t PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, void *arg) { \
         CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void; \
         /* Allocate and assign arguments */ \
-        ADD_PREFIX(AsyncMethodArgs) *args_struct = calloc(1, sizeof(ADD_PREFIX(AsyncMethodArgs))); \
+        ADD_PREFIX(AsyncArgs) *args_struct = calloc(1, sizeof(ADD_PREFIX(AsyncArgs))); \
         if (!args_struct) { \
             fprintf(stderr, "Error: Failed to allocate memory for async method arguments '%s'.\n", #method_name); \
-            return; \
+            return thrd_error; \
         } \
         args_struct->self_void = self_void; \
         args_struct->arg = arg; \
         /* Start the thread */ \
-        thrd_t thread_id; \
-        if (thrd_create(&thread_id, PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread), args_struct) != thrd_success) { \
+        if (CLASSYC_THREAD_CREATE(args_struct->thread_id, PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread), args_struct) != thrd_success) { \
             /* Handle thread creation error */ \
             fprintf(stderr, "Error: Failed to create thread for method '%s'.\n", #method_name); \
-            free(args_struct); \
-        } else { \
-            thrd_detach(thread_id); \
+            free(args_struct); /* don't leave allocated memory on the heap */ \
+            return thrd_error; \
         } \
         /* Return immediately */ \
+        return args_struct->thread_id; \
     } \
     \
     /* Thread function where the user's code will run */ \
-    static int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct) { \
-        ADD_PREFIX(AsyncMethodArgs) *args_struct = (ADD_PREFIX(AsyncMethodArgs) *)void_arg_struct; \
+    static inline int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct) { \
+        ADD_PREFIX(AsyncArgs) *args_struct = (ADD_PREFIX(AsyncArgs) *)void_arg_struct; \
         CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)args_struct->self_void; \
+        thrd_t ADD_PREFIX(thread_id) = args_struct->thread_id; \
         void *arg = args_struct->arg; \
-        /* Free the arguments structure */ \
-        free(args_struct); \
         /* User's code starts here */  
+
 #define END_ASYNC_METHOD \
         /* User's code ends here */ \
-        return 0; \
+        return EXIT_ASYNC; \
     } 
-   
+#define EXIT_ASYNC \
+    /* Free the arguments structure to prevent memory leak, */ \
+    /* then detach the thread when the thread ends (at the end of the function) so it cleans up after itself, */ \
+    /* and evaluate to the int return value of the detachment */ \
+    (free(args_struct), CLASSYC_THREAD_DETACH(ADD_PREFIX(thread_id)))
+#define AWAIT(thread_id) \
+    thrd_join(thread_id, NULL)
 #else
 /* Synchronous fallback if threads are not supported */
 #define ASYNC_METHOD(ret_type, method_name, void_ptr_arg) \
     /* Asynchronous methods not supported by the compiler: Synchronous method fallback */ \
-    METHOD(ret_type, method_name, void_ptr_arg) \
+    METHOD(thrd_t, method_name, void_ptr_arg) \
         /* User method code, with access to arg */
 #define END_ASYNC_METHOD \
+        return (thrd_t)0; \
     END_METHOD
+#define EXIT_ASYNC ((thrd_t)0)
+#define AWAIT(thread_id) \
+    /* Threads not supported: dummy await that ensures the thread is called in case AWAIT(object->method(object, arg)) is used */ \
+    do { \
+        thrd_t ADD_PREFIX(dummy_await_thread) = thread_id; \
+    } while (0)
 #endif
 
 /* EVENTS */
 #define GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID) \
     CONCAT(TRICAT(ClassyC_, class_name, _), TRICAT(event_name, _hdlr_, handler_ID))
 /* Define an event handler for an instance. Handler_ID is a unique ID for the event handler (letters, numbers, _). */
-#define EVENT_HANDLER(class_name, event_name, handlerID, ...) \
-    static void GET_EVENT_FUNC_NAME(class_name, event_name, handlerID)(void *self_void, ##__VA_ARGS__); \
-    static void GET_EVENT_FUNC_NAME(class_name, event_name, handlerID)(void *self_void, ##__VA_ARGS__) { \
+#define EVENT_HANDLER(class_name, event_name, handler_ID, ...) \
+    static inline void GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID)(void *self_void, ##__VA_ARGS__); \
+    static inline void GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID)(void *self_void, ##__VA_ARGS__) { \
         class_name *self = (class_name *)self_void; \
         /* User code for the event */ 
 #define END_EVENT_HANDLER }
