@@ -210,14 +210,14 @@ The resulting interface accessor for an interface is a struct of type `interface
    RAISE_INTERFACE_EVENT(movable_struct, on_move, distance_moved);
    ```
 ## Async methods
-A method can be defined as an asynchronous method if it has `thrd_t` return type, and has one parameter of type `void *` and name `arg`. When an asynchronous method is called, it will return the thread ID immediately and the method will run in a separate thread.
-The declaration in the CLASS_class_name macro of an asynchronous method is exactly the same as for a synchronous method.
-To make a method async simply use `ASYNC_METHOD` instead of `METHOD` in its body definition.
-The self pointer and the `void *arg` parameter are available in the asynchronous method body.
-To return from an asynchronous method beforehand, return the value of the `EXIT_ASYNC` macro: `Return EXIT_ASYNC;` This ensures that the thread is detached and the memory allocated for the arguments structure is freed.
-Async methods are supported if the compiler provides <threads.h> support or if the TinyCThread library files tinycthread.h and tinycthread.c are present in the ClassyC directory (source available at: https://github.com/tinycthread/tinycthread).
-If the compiler doesn't support threads, and the TinyCThread library is not available, asynchronous methods will be disabled and the library will fall back to synchronous methods.
-The availability of async methods can be checked with the CLASSYC_THREADS_SUPPORTED macro.
+- A method can be defined as an asynchronous method if it has `thrd_t` return type, and has one parameter of type `void *` and name `arg`. When an asynchronous method is called, it will return the thread ID immediately and the method will run in a separate thread.
+- The declaration in the CLASS_class_name macro of an asynchronous method is exactly the same as for a synchronous method.
+- To make a method async simply use `ASYNC_METHOD` instead of `METHOD` in its body definition.
+- The self pointer and the `void *arg` parameter are available in the asynchronous method body.
+- To return from an asynchronous method beforehand, return the value of the `EXIT_ASYNC` macro: `Return EXIT_ASYNC;` This ensures that the thread is detached and the memory allocated for the arguments structure is freed.
+- Async methods are supported if the compiler provides <threads.h> support or if the TinyCThread library files tinycthread.h and tinycthread.c are present in the ClassyC directory (source available at: https://github.com/tinycthread/tinycthread).
+- If the compiler doesn't support threads, and the TinyCThread library is not available, asynchronous methods will be disabled and the library will fall back to synchronous methods.
+- The availability of async methods can be checked with the CLASSYC_THREADS_SUPPORTED macro.
    ```c
    #define CLASS_AsyncSave(Base, Interface, Data, Event, Method, Override) \
        Base(OBJECT) \
@@ -232,8 +232,8 @@ The availability of async methods can be checked with the CLASSYC_THREADS_SUPPOR
        self->finished = true;
    END_ASYNC_METHOD
    ```
-Use the `AWAIT` macro to pause the current thread until the asynchronous method finishes. This is particularly useful when subsequent operations depend on the result of an asynchronous call.
-Use the thread identifier returned by the asynchronous method with the `AWAIT` macro.
+- Use the `AWAIT` macro to pause the current thread until the asynchronous method finishes. This is particularly useful when subsequent operations depend on the result of an asynchronous call.
+- Use the thread identifier returned by the asynchronous method with the `AWAIT` macro.
 ```c
 AWAIT(my_car->save_data(my_car, data_arg));
 ```
@@ -259,10 +259,10 @@ ASYNC_METHOD(thrd_t, async_method, void *arg)
 END_ASYNC_METHOD
 ```
 ## Synchronization and object locking
-To ensure thread safety when working with shared resources across multiple threads, ClassyC provides an easy to use mutex support through predefined macros.
-Every object has a `mutex` data member of type `mtx_t`, which can be used to synchronize access to the object.
-Lock an object to read or write to it in a thread-safe way using the `LOCK_OBJECT` macro.
-Unlock an object using the `UNLOCK_OBJECT` macro.
+- To ensure thread safety when working with shared resources across multiple threads, ClassyC provides an easy to use mutex support through predefined macros.
+- Every object has a `mutex` data member of type `mtx_t`, which can be used to synchronize access to the object.
+- Lock an object to read or write to it in a thread-safe way using the `LOCK_OBJECT` macro.
+- Unlock an object using the `UNLOCK_OBJECT` macro.
     ```c
     LOCK_OBJECT(my_app);
     my_app->do_something();
