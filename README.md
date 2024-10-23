@@ -323,7 +323,7 @@ These macros can be defined before including this header to customize some of th
 - No curly braces are needed around the body of the methods, constructors, destructors, or event handlers but can be used for clarity. Not using them won't produce unexpected behavior and is recommended for brevity.
 - Since methods are function pointers within the object, you must pass the instance explicitly when calling them.
 - Interfaces declared in base classes are automatically available in derived classes, including them again in the derived class will cause name collisions.
-- Interfaces can overlap in data members, events, and methods without causing conflicts.
+- Interfaces can overlap in data members, events, and methods without causing conflicts. It is the class that implements the interface the responsible for the correct implementation (or inheritance) of all the interface members.
 - Casting an object to any base class will give access to the subset of data members and methods present in that base class.
   The methods in the casted object will still point to the most derived implementation of the method in the inheritance chain.
 - All the valid casts of the object will access the same versions of the data, events, and methods.
