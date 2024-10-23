@@ -52,3 +52,5 @@ Mkfile.old
 dkms.conf
 tinycthread.c
 tinycthread.h
+classyc_sample
+t.c

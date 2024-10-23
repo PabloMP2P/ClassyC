@@ -91,18 +91,18 @@ ClassyC is an experimental and recreational library not intended for production 
 
 ## Using a class
 
-1. **Use `CREATE_HEAP(ClassName, ObjectPtr, [ConstructorArgs])`** to create a new object in the heap.
+1. **Use `NEW_ALLOC(ClassName, [ConstructorArgs])`** to allocate and create a new object in the heap.
+   You can add the use of `AUTODESTROY_PTR(ClassName)` to automatically destroy the object and free the memory when it goes out of scope.
    ```c
-   CREATE_HEAP(Car, my_car, 10000);  // Simple syntax with automatic destruction
-   // Alternative syntax the above expands to:
-   AUTODESTROY_PTR(Car) *my_car = NEW_ALLOC(Car, 10000);
+   // Simple syntax with automatic destruction
+   AUTODESTROY_PTR(Car) *my_car = NEW_ALLOC(Car);
    // Alternative syntax without automatic destruction:
-   Car *my_car = NEW_ALLOC(Car, 10000);
+   Car *my_car = NEW_ALLOC(Car);
    ```
-   Or use `CREATE_STACK(class_name, object_name, optional_constructor_parameters)` to create a new object in the stack.
+   Or use `NEW_INPLACE(ClassName, object_address)` to create a new object in the stack (or any other address).
+   You can add the use of `AUTODESTROY(ClassName)` to automatically destroy the object (without freeing memory) when it goes out of scope.
    ```c
-   CREATE_STACK(Elephant, my_elephant);  // Simple syntax with automatic destruction
-   // Alternative syntax the above expands to:
+   // Simple syntax with automatic destruction:
    AUTODESTROY(Elephant) my_elephant; 
    NEW_INPLACE(Elephant, &my_elephant);
    // Alternative syntax without automatic destruction:
@@ -338,7 +338,7 @@ These macros can be defined before including this header to customize some of th
 - The OBJECT class has a unique implementation pattern: it is the only class that has no base class and is not defined with the `CLASS_` prefix.
 - The OBJECT class is the base for all classes, and ensures that every object has the fundamental capabilities required for ClassyC's operation, such as proper destruction and synchronization.
 - The library is optimized to reduce levels of indirection and data overhead.
-- If the compiler doesn't support automatic destruction, ensure that for every `CREATE_HEAP`, there is a corresponding `DESTROY_FREE` to prevent memory leaks.
+- If the compiler doesn't support automatic destruction, ensure that for every `NEW_ALLOC`, there is a corresponding `DESTROY_FREE` to prevent memory leaks.
 - Ensure that `DESTROY_FREE` is only used with heap-allocated objects.
 - Make sure to nullify all pointers to the instance after calling `DESTROY_FREE` or `DESTROY` to avoid dangling pointers. The DESTROY_FREE macro for heap-allocated objects already sets the passed pointer to NULL.
 - The recursive macros limit the inheritance depth to 9 levels.
@@ -1010,11 +1010,10 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 #endif
 
 /* MACROS FOR OBJECT ALLOCATION AND INITIALIZATION */
-/* CREATE_HEAP and CREATE_STACK macros declare, allocate (if needed) and initialize the object */
 
-/* Macros for explicit object creation syntax */
-/* AUTODESTROY_PTR(Class) *ptr = NEW_ALLOC(class_name, ...) */
-/* AUTODESTROY(Class) obj = NEW_INPLACE(class_name, &obj, ...) */
+/* Macros for object creation syntax */
+/* Heap allocation: AUTODESTROY_PTR(Class) *ptr = NEW_ALLOC(class_name, ...); */
+/* Stack allocation: AUTODESTROY(Class) obj; NEW_INPLACE(class_name, &obj, ...); */
 #define AUTODESTROY_PTR(class_name) \
     class_name CLEANUP_ATTRIBUTE(class_name, _ptr_destructor)
 #define AUTODESTROY(class_name) \
@@ -1026,13 +1025,6 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
     memset(object_adress, 0, sizeof(class_name)); \
     /* Call the constructor */ \
     PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, object_adress, ##__VA_ARGS__)
-
-#define CREATE_STACK(class_name, object_name, ...) \
-    /* Declare an instance of the class and allocate the object on the stack */ \
-    AUTODESTROY(class_name) object_name; NEW_INPLACE(class_name, &object_name, ##__VA_ARGS__)
-#define CREATE_HEAP(class_name, object_ptr_name, ...) \
-    /* Declare a pointer to a new instance of the class and allocate the object in the heap */ \
-    AUTODESTROY_PTR(class_name) *object_ptr_name = NEW_ALLOC(class_name, ##__VA_ARGS__)
 
 
 /* MACROS FOR OBJECT DESTRUCTION */

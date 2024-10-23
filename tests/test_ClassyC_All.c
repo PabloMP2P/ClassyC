@@ -34,8 +34,9 @@ METHOD(void, set_value, int new_value)
 END_METHOD
 
 void test_ClassCreation(void) {
-    CREATE_HEAP(TestObject, obj, 10);
-    CREATE_STACK(TestObject, obj2, 20);
+    AUTODESTROY_PTR(TestObject) *obj = NEW_ALLOC(TestObject, 10);
+    AUTODESTROY(TestObject) obj2;
+    NEW_INPLACE(TestObject, &obj2, 20);
     TEST_ASSERT_NOT_NULL(obj);
     TEST_ASSERT_NOT_NULL(&obj2);
     TEST_ASSERT_EQUAL_INT(10, obj->value);
@@ -45,7 +46,7 @@ void test_ClassCreation(void) {
 }
 
 void test_ClassMethods(void) {
-    CREATE_HEAP(TestObject, obj, 20);
+    AUTODESTROY_PTR(TestObject) *obj = NEW_ALLOC(TestObject, 20);
     TEST_ASSERT_NOT_NULL(obj);
     TEST_ASSERT_EQUAL_INT(20, obj->get_value(obj));
 
@@ -100,7 +101,7 @@ METHOD(int, get_derived_value)
 END_METHOD
 
 void test_Inheritance(void) {
-    CREATE_HEAP(DerivedClass, obj, 100, 200);
+    AUTODESTROY_PTR(DerivedClass) *obj = NEW_ALLOC(DerivedClass, 100, 200);
     TEST_ASSERT_NOT_NULL(obj);
     TEST_ASSERT_EQUAL_INT(100, obj->get_base_value(obj));
     TEST_ASSERT_EQUAL_INT(200, obj->get_derived_value(obj));
@@ -156,10 +157,10 @@ METHOD(void, print)
 END_METHOD
 
 void test_Polymorphism(void) {
-    CREATE_HEAP(BasePrintable, base_obj, 50);
+    AUTODESTROY_PTR(BasePrintable) *base_obj = NEW_ALLOC(BasePrintable, 50);
     TEST_ASSERT_NOT_NULL(base_obj);
 
-    CREATE_HEAP(DerivedPrintable, derived_obj, 100, 150);
+    AUTODESTROY_PTR(DerivedPrintable) *derived_obj = NEW_ALLOC(DerivedPrintable, 100, 150);
     TEST_ASSERT_NOT_NULL(derived_obj);
 
     Printable base_printable = base_obj->to_Printable(base_obj);
@@ -199,7 +200,7 @@ END_EVENT_HANDLER
 void test_Events(void) {
     event_triggered = 0;
 
-    CREATE_HEAP(EventClass, obj);
+    AUTODESTROY_PTR(EventClass) *obj = NEW_ALLOC(EventClass);
     TEST_ASSERT_NOT_NULL(obj);
 
     REGISTER_EVENT(EventClass, on_event_triggered, handler1, obj);
@@ -229,19 +230,23 @@ DESTRUCTOR()
 END_DESTRUCTOR
 
 void CreateObjectsAndLeave(void) {
-    CREATE_HEAP(AutoDestruct, obj1);
-    CREATE_HEAP(AutoDestruct, obj2);
-    CREATE_HEAP(AutoDestruct, obj3);
-    CREATE_STACK(AutoDestruct, obj4);
-    CREATE_STACK(AutoDestruct, obj5);
-    CREATE_STACK(AutoDestruct, obj6);
+    
+    AUTODESTROY_PTR(AutoDestruct) *obj1 = NEW_ALLOC(AutoDestruct);
+    AUTODESTROY_PTR(AutoDestruct) *obj2 = NEW_ALLOC(AutoDestruct);
+    AUTODESTROY_PTR(AutoDestruct) *obj3 = NEW_ALLOC(AutoDestruct);
+    
+    
+    
+    AUTODESTROY(AutoDestruct) obj4; NEW_INPLACE(AutoDestruct, &obj4);
+    AUTODESTROY(AutoDestruct) obj5; NEW_INPLACE(AutoDestruct, &obj5);
+    AUTODESTROY(AutoDestruct) obj6; NEW_INPLACE(AutoDestruct, &obj6);
 }
 
 void test_AutoDestructionManualDestruct(void) {
     auto_destruct_calls = 0;
 
-    CREATE_HEAP(AutoDestruct, obj);
-    CREATE_STACK(AutoDestruct, obj2);
+    AUTODESTROY_PTR(AutoDestruct) *obj = NEW_ALLOC(AutoDestruct);
+    AUTODESTROY(AutoDestruct) obj2; NEW_INPLACE(AutoDestruct, &obj2);
     DESTROY_FREE(obj);
     DESTROY(obj2);
 

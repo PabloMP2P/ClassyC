@@ -220,8 +220,11 @@ void successful_exit(void) {
 
 void create_objects_inside_function(void) {
     // This function is used to test the automatic destruction of objects when they go out of scope 
-    CREATE_HEAP(Car, local_heap_car, 200);
-    CREATE_STACK(Car, local_stack_car, 200);
+    
+    AUTODESTROY_PTR(Car) *local_heap_car = NEW_ALLOC(Car, 200);
+    
+    AUTODESTROY(Car) local_stack_car;
+    NEW_INPLACE(Car, &local_stack_car, 200);
 
     printf("Inside function, the objects have been created.\n"); 
 
@@ -239,7 +242,6 @@ int main(void){
     printf("Creating a Car object on the heap\n");
 
     AUTODESTROY_PTR(Car) *my_car = NEW_ALLOC(Car, 10000);
-    // Alternatively, we could have used CREATE_HEAP(Car, my_car, 10000); 
 
     if (!my_car) {
         fprintf(stderr, "Failed to create Car object.\n");
@@ -269,7 +271,7 @@ int main(void){
     printf("\nCreating an Elephant object on the stack\n");
     AUTODESTROY(Elephant) my_elephant; 
     NEW_INPLACE(Elephant, &my_elephant);
-    // Alternatively, we could have used CREATE_STACK(Elephant, my_elephant);
+
     my_elephant.position = 24; // Note that as my_elephant is not a pointer, we access the fields with the dot operator.
     Elephant *my_elephant_ptr = &my_elephant;
     my_elephant_ptr->position = 24; // If we have a pointer to the object, access to the members is done with the arrow operator.
@@ -287,7 +289,7 @@ int main(void){
     printf("\nCreating a large number of objects in the heap and the stack\n");
     clock_t start_time = clock();
     for (size_t iter = 0; iter < TEST_NUM_OBJECTS; iter++) {
-        CREATE_HEAP(TinyClass, tiny_heap_object);
+        AUTODESTROY_PTR(TinyClass) *tiny_heap_object = NEW_ALLOC(TinyClass);
         if (tiny_heap_object == NULL) {
             printf("Memory allocation failed\n");
             return 1;
@@ -303,7 +305,9 @@ int main(void){
 
     start_time = clock();
     for (size_t iter = 0; iter < TEST_NUM_OBJECTS; iter++) {
-        CREATE_STACK(TinyClass, tiny_stack_object);
+        AUTODESTROY(TinyClass) tiny_stack_object;
+        NEW_INPLACE(TinyClass, &tiny_stack_object);
+
 #if CLASSYC_AUTO_DESTROY_SUPPORTED == 0
         // Compiler doesn't support auto-destruction; destroy the objects manually
         DESTROY(tiny_stack_object);
@@ -320,9 +324,9 @@ int main(void){
 #endif
 
     printf("\nTesting asynchronous methods\n");
-    CREATE_HEAP(AsyncClass, my_async_class1);
-    CREATE_HEAP(AsyncClass, my_async_class2);
-    CREATE_HEAP(AsyncClass, my_async_class3);
+    AUTODESTROY_PTR(AsyncClass) *my_async_class1 = NEW_ALLOC(AsyncClass);
+    AUTODESTROY_PTR(AsyncClass) *my_async_class2 = NEW_ALLOC(AsyncClass);
+    AUTODESTROY_PTR(AsyncClass) *my_async_class3 = NEW_ALLOC(AsyncClass);
     REGISTER_EVENT(AsyncClass, on_second_elapsed, myasyncclass_second_elapsed, my_async_class1);
     REGISTER_EVENT(AsyncClass, on_second_elapsed, myasyncclass_second_elapsed, my_async_class2);
     REGISTER_EVENT(AsyncClass, on_second_elapsed, myasyncclass_second_elapsed, my_async_class3);
