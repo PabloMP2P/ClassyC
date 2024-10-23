@@ -326,7 +326,7 @@ These macros can be defined before including this header to customize some of th
 - No curly braces are needed around the body of the methods, constructors, destructors, or event handlers but can be used for clarity. Not using them won't produce unexpected behavior and is recommended for brevity.
 - Since methods are function pointers within the object, you must pass the instance explicitly when calling them.
 - Interfaces declared in base classes are automatically available in derived classes, including them again in the derived class will cause name collisions.
-- Interfaces can overlap in data members, events, and methods without causing conflicts.
+- Interfaces can overlap in data members, events, and methods without causing conflicts. It is the class that implements the interface the responsible for the correct implementation (or inheritance) of all the interface members.
 - Casting an object to any base class will give access to the subset of data members and methods present in that base class.
   The methods in the casted object will still point to the most derived implementation of the method in the inheritance chain.
 - All the valid casts of the object will access the same versions of the data, events, and methods.
@@ -414,19 +414,24 @@ These macros can be defined before including this header to customize some of th
 #ifdef CLASSYC_DISABLE_RUNTIME_CHECKS
     #define CLASSYC_CHECK_INHERITANCE_DEPTH
 #else
-    #define CLASSYC_CHECK_INHERITANCE_DEPTH \
-        int ADD_PREFIX(inheritance_depth) = GET_INHERITANCE_LEVEL(CLASSYC_CLASS_NAME); \
-        if (ADD_PREFIX(inheritance_depth) > 9) { \
+    #define CLASSYC_CHECK_INHERITANCE_DEPTH                                             \
+        int ADD_PREFIX(inheritance_depth) = GET_INHERITANCE_LEVEL(CLASSYC_CLASS_NAME);  \
+        if (ADD_PREFIX(inheritance_depth) > 9) {                                        \
             fprintf(stderr, QUOTE(CLASSYC_CLASS_NAME) " inheritance depth (%d) exceeds the maximum supported limit (9 levels)\n", ADD_PREFIX(inheritance_depth)); \
-            return NULL; \
+            return NULL;                                                                \
         } 
 #endif
 
 /* Static assertion to ensure the inheritance depth does not exceed the maximum limit */
 /* Available in C11 and later: disabled by default */
 #ifdef CLASSYC_ENABLE_COMPILE_TIME_CHECKS
-    #define CLASSYC_CHECK_INHERITANCE_DEPTH_CT \
-        _Static_assert(GET_INHERITANCE_LEVEL(CLASSYC_CLASS_NAME) <= 9, "Inheritance depth exceeds the maximum supported limit (9 levels)");
+    /* Check if the compiler supports C11 static assertions */
+    #if __STDC_VERSION__ >= 201112L
+        #define CLASSYC_CHECK_INHERITANCE_DEPTH_CT \
+            _Static_assert(GET_INHERITANCE_LEVEL(CLASSYC_CLASS_NAME) <= 9, "Inheritance depth exceeds the maximum supported limit (9 levels)");
+    #else
+        #define CLASSYC_CHECK_INHERITANCE_DEPTH_CT
+    #endif
 #else
     #define CLASSYC_CHECK_INHERITANCE_DEPTH_CT
 #endif
@@ -499,12 +504,12 @@ These macros can be defined before including this header to customize some of th
     #elif __unix
         #define _POSIX_C_SOURCE 199309L // or greater
         #include <time.h>
-        #define THREAD_SLEEP(milliseconds) do {            \
-            /* convert milliseconds to seconds and nanoseconds */ \
-            long long seconds = milliseconds / 1000; \
-            long long nanoseconds = (milliseconds % 1000) * 1000000; \
-            struct timespec duration = {seconds, nanoseconds}; \
-            nanosleep(&duration, NULL);           \
+        #define THREAD_SLEEP(milliseconds) do {                       \
+            /* convert milliseconds to seconds and nanoseconds */     \
+            long long seconds = milliseconds / 1000;                  \
+            long long nanoseconds = (milliseconds % 1000) * 1000000;  \
+            struct timespec duration = {seconds, nanoseconds};        \
+            nanosleep(&duration, NULL);                               \
         } while (0)
     #else
         /* Unknown system and threads are not supported */
@@ -519,14 +524,14 @@ These macros can be defined before including this header to customize some of th
         thrd_create(&thread_id, method_thread_function, args_struct)
     #define CLASSYC_THREAD_DETACH(thread_id) thrd_detach(thread_id)
     /* Macros called by the user */
-    #define THREAD_SLEEP(milliseconds) \
-    do { \
-        /* convert milliseconds to seconds and nanoseconds */ \
-        long long seconds = milliseconds / 1000; \
-        long long nanoseconds = (milliseconds % 1000) * 1000000; \
-        struct timespec duration = {seconds, nanoseconds}; \
-        thrd_sleep(&duration, NULL); \
-    } while (0)
+    #define THREAD_SLEEP(milliseconds)                                \
+        do {                                                          \
+            /* convert milliseconds to seconds and nanoseconds */     \
+            long long seconds = milliseconds / 1000;                  \
+            long long nanoseconds = (milliseconds % 1000) * 1000000;  \
+            struct timespec duration = {seconds, nanoseconds};        \
+            thrd_sleep(&duration, NULL);                              \
+        } while (0)
     #define LOCK_OBJECT(object_address) mtx_lock(&object_address->mutex)
     #define UNLOCK_OBJECT(object_address) mtx_unlock(&object_address->mutex)
     /* Structure to pass arguments to the method thread function: it'll be given to the user's method code extracting self and arg */
@@ -539,20 +544,16 @@ These macros can be defined before including this header to customize some of th
 
 /* Header of the class struct */
 /* Declare a class struct and its type name */
-#define STRUCT_HEADER(struct_name) \
-    typedef struct struct_name struct_name; \
+#define STRUCT_HEADER(struct_name)             \
+    typedef struct struct_name struct_name;    \
     struct struct_name
 /* COMPONENTS OF THE CLASS STRUCT */
-#define WRITE_METHOD_POINTER(ret_type, method_name, ...) \
-    ret_type (*method_name)(void *self_void, ##__VA_ARGS__);
-#define WRITE_DATA_MEMBER(type, member_name) \
-    type member_name;
-#define WRITE_EVENT_MEMBER(event_name, ...) \
-    void (*event_name)(void *self_void, ##__VA_ARGS__);
-#define WRITE_INTERFACE_FUNCTION_POINTER(interface_name) \
-    /* interfaces create a function pointer to the interface cast function. */ \
-    /* The interface cast function will return an interface struct with pointers to the class members */ \
-    interface_name (*CONCAT(to_, interface_name))(void *self_void);
+#define WRITE_METHOD_POINTER(ret_type, method_name, ...) ret_type (*method_name)(void *self_void, ##__VA_ARGS__);
+#define WRITE_DATA_MEMBER(type, member_name) type member_name;
+#define WRITE_EVENT_MEMBER(event_name, ...) void (*event_name)(void *self_void, ##__VA_ARGS__);
+/* Interfaces create a function pointer to the interface cast function. */
+/* The interface cast function will return an interface struct with pointers to the class members */
+#define WRITE_INTERFACE_FUNCTION_POINTER(interface_name) interface_name (*CONCAT(to_, interface_name))(void *self_void);
 
 /* Every class has a destructor function pointer and a mutex for thread safety */
 /* They are introduced as data members of the OBJECT class struct that is inherited by all classes */
@@ -592,10 +593,9 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 #define WRITE_BASE_NAME(base_to_call)base_to_call
 #define X_GET_BASE_NAME(class) GET_IMPLEMENTS(class)(WRITE_BASE_NAME, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING)
 
-/* Set the pointers to the Basic class functions (_destructor) */
-#define WRITE_SET_BASIC_CLASS_FUNC_POINTERS(class_name) \
-    /* Constructor pointer not needed (construction is invoked by calling the function directly) */\
-    /* Set the destructor pointer */ \
+/* Set the _destructor pointer to the class destructor function */
+/* (constructor pointer not needed, as construction is invoked by NEW_ALLOC or NEW_INPLACE calling the constructor function directly) */
+#define WRITE_SET_DESTRUCTOR_FUNC_POINTER(class_name) \
     self->_destructor = PREFIXCONCAT(class_name, _destructor); 
 
 /* Set the method pointers to the functions of the class */
@@ -677,11 +677,11 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 #define WRITE_INTERFACE_STRUCT(interface_name) \
     GET_INTERFACE(interface_name)(WRITE_I_DATA_MEMBER, WRITE_I_EVENT_MEMBER, WRITE_I_METHOD_PTR)
 /* Interface struct definition */
-#define CREATE_INTERFACE(interface_name) \
+#define CREATE_INTERFACE(interface_name)         \
    typedef struct interface_name interface_name; \
-   struct interface_name { \
-   void *self; \
-   WRITE_INTERFACE_STRUCT(interface_name) \
+   struct interface_name {                       \
+       void *self;                               \
+       WRITE_INTERFACE_STRUCT(interface_name)    \
    };
 
 
@@ -698,15 +698,15 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 
 /* INTERFACE CAST FUNCTIONS in the form class_name_to_interface_name */
 #define WRITE_INTERFACE_CAST_FUNCTION(interface_name) \
-    interface_name TRICAT(CLASSYC_CLASS_NAME, _to_, interface_name)(void *self_void); \
+    interface_name TRICAT(CLASSYC_CLASS_NAME, _to_, interface_name)(void *self_void);  \
     interface_name TRICAT(CLASSYC_CLASS_NAME, _to_, interface_name)(void *self_void) { \
-        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void; \
-        interface_name interface_struct; \
-        interface_struct = (interface_name){ \
+        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void;                    \
+        interface_name interface_struct;                                               \
+        interface_struct = (interface_name){                                           \
             GET_INTERFACE(interface_name)(WRITE_I_DATA_MEMBER_INITIALIZER, WRITE_I_EVENT_MEMBER_INITIALIZER, WRITE_I_METHOD_PTR_INITIALIZER) \
-            .self = self \
-        };\
-        return interface_struct; \
+            .self = self                                                               \
+        };                                                                             \
+        return interface_struct;                                                       \
     }
 #define WRITE_CLASS_INTERFACE_CAST_FUNCTIONS(class) \
     GET_IMPLEMENTS(class)(WRITE_NOTHING, WRITE_INTERFACE_CAST_FUNCTION, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING) \
@@ -744,7 +744,7 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 /* REGISTER INTERFACE CAST FUNCTIONS */
 #define WRITE_REGISTER_INTERFACE_CAST_FUNCTION(interface_name) \
     self->CONCAT(to_, interface_name) = TRICAT(CLASSYC_CLASS_NAME, _to_, interface_name);
-#define WRITE_CLASS_REGISTER_INTERFACE_CAST_FUNCTIONS(class) \
+#define WRITE_CLASS_REGISTER_INTERFACE_CAST_FUNCTIONS(class)  \
     GET_IMPLEMENTS(class)(WRITE_NOTHING, WRITE_REGISTER_INTERFACE_CAST_FUNCTION, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING) 
 #define RECURSIVE_REGISTER_INTERFACE_CAST_FUNCTIONS_9(class)  \
     WRITE_CLASS_REGISTER_INTERFACE_CAST_FUNCTIONS(class) 
@@ -782,66 +782,68 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 /* Initialize the base class: call this within the 'CONSTRUCTOR' of the derived class to run the 'CONSTRUCTOR' of the base class. */
 #define INIT_BASE(...) \
     PREFIXCONCAT(X_GET_BASE_NAME(CLASSYC_CLASS_NAME), _user_constructor)(IS_BASE_TRUE, self, ##__VA_ARGS__)
+
+/* Constructor macro, this is where most of the logic for class definition is implemented */
 #define CONSTRUCTOR(...)\
     /* Compile-time assertion (available in C11 and later) to ensure the inheritance depth does not exceed the maximum limit */ \
-    CLASSYC_CHECK_INHERITANCE_DEPTH_CT\
-    /* Declare the class struct */ \
-    STRUCT_HEADER(CLASSYC_CLASS_NAME) { \
-        /* Include all the members of the class struct */ \
-        RECURSIVE_CLASS_MEMBER_DECLARATIONS(CLASSYC_CLASS_NAME) \
-    } ; \
+    CLASSYC_CHECK_INHERITANCE_DEPTH_CT                                  \
+    /* Declare the class struct */                                      \
+    STRUCT_HEADER(CLASSYC_CLASS_NAME) {                                 \
+        /* Include all the members of the class struct */               \
+        RECURSIVE_CLASS_MEMBER_DECLARATIONS(CLASSYC_CLASS_NAME)         \
+    } ;                                                                 \
     /* Prototypes for the destructor and constructor class functions */ \
     static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(void *self_void); \
     static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _ptr_destructor)(CLASSYC_CLASS_NAME **self_ptr); \
     static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(bool is_base, void *self_void); \
     static inline void * PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(void *self_void); \
     static inline void * PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(bool is_base, void *self_void, ##__VA_ARGS__); \
-    /* Write the prototypes for new and overridden methods */ \
-    X_METHOD_FUNC_PROTOTYPES(CLASSYC_CLASS_NAME) \
-    /* Interface cast functions */ \
-    RECURSIVE_INTERFACE_CAST_FUNCTIONS(CLASSYC_CLASS_NAME) \
-    /* Constructor function */ \
+    /* Write the prototypes for new and overridden methods */           \
+    X_METHOD_FUNC_PROTOTYPES(CLASSYC_CLASS_NAME)                        \
+    /* Interface cast functions */                                      \
+    RECURSIVE_INTERFACE_CAST_FUNCTIONS(CLASSYC_CLASS_NAME)              \
+    /* Constructor function */                                          \
     static inline void* PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(void * self_void) { \
         /* This function is used to allocate memory for the object (if needed) and set its basic function and method pointers */ \
         /* Runtime check for inheritance depth: disable by defining CLASSYC_DISABLE_RUNTIME_CHECKS */ \
-        CLASSYC_CHECK_INHERITANCE_DEPTH\
-        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void; \
-        if (self_void == NULL) { \
+        CLASSYC_CHECK_INHERITANCE_DEPTH                                 \
+        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void;     \
+        if (self_void == NULL) {                                        \
             /* No object pointer provided: allocate memory for the object in the heap */ \
             self = (CLASSYC_CLASS_NAME *)calloc(1, sizeof(CLASSYC_CLASS_NAME)); \
-            self_void = self; \
-            if (self == NULL) { \
-                /* Allocation failure */ \
-                return NULL; \
-            } \
-        } else { \
+            self_void = self;                                           \
+            if (self == NULL) {                                         \
+                /* Allocation failure */                                \
+                return NULL;                                            \
+            }                                                           \
+        } else {                                                        \
             /* Object pointer provided (no need to allocate memory for it): use it */ \
-            self = (CLASSYC_CLASS_NAME *)self_void; \
-        } \
-        /* Call the base class constructor */ \
+            self = (CLASSYC_CLASS_NAME *)self_void;                     \
+        }                                                               \
+        /* Call the base class constructor */                           \
         PREFIXCONCAT(X_GET_BASE_NAME(CLASSYC_CLASS_NAME), _constructor)(self); \
-        /* Set the basic class function pointers (_destructor) to the functions of the class */ \
-        WRITE_SET_BASIC_CLASS_FUNC_POINTERS(CLASSYC_CLASS_NAME) \
-        /* Set method pointers to the functions of the class */ \
+        /* Set destructor pointer to the class destructor function */   \
+        WRITE_SET_DESTRUCTOR_FUNC_POINTER(CLASSYC_CLASS_NAME)           \
+        /* Set method pointers to the functions of the class */         \
         /* as constructors are executed in the order of inheritance, overridden methods are set last */ \
         GET_IMPLEMENTS(CLASSYC_CLASS_NAME)(WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, SET_METHOD_PTR, SET_METHOD_PTR) \
-        /* Register interface cast functions */ \
+        /* Register interface cast functions */                         \
         RECURSIVE_REGISTER_INTERFACE_CAST_FUNCTIONS(CLASSYC_CLASS_NAME) \
-        /* Initialize the mutex for thread safety */ \
-        CLASSYC_MUTEX_INIT(self->mutex, mtx_plain); \
-        return self; \
-    } \
-    /* User constructor function */ \
+        /* Initialize the mutex for thread safety */                    \
+        CLASSYC_MUTEX_INIT(self->mutex, mtx_recursive);                 \
+        return self;                                                    \
+    }                                                                   \
+    /* User constructor function */                                     \
     static inline void* PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(bool is_base, void * self_void, ##__VA_ARGS__) { \
-        if (!is_base) { \
+        if (!is_base) {                                                 \
             /* Only for the instanced objects, not for the base classes: run the 'real' constructor */\
              self_void = PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(self_void); \
-             if (!self_void) { \
-                /* Failure, pointer to the object is NULL */ \
-                return NULL; \
-             } \
-        } \
-        CLASSYC_CLASS_NAME * self = (CLASSYC_CLASS_NAME *)self_void; \
+             if (!self_void) {                                          \
+                /* Failure, pointer to the object is NULL */            \
+                return NULL;                                            \
+             }                                                          \
+        }                                                               \
+        CLASSYC_CLASS_NAME * self = (CLASSYC_CLASS_NAME *)self_void;    \
         /* User constructor code follows, it will be executed even if is_base is true when INIT_BASE is called */ \
 
 #define END_CONSTRUCTOR \
@@ -853,114 +855,118 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
      /* Contains the destructor code for the class. Then on END_DESTRUCTOR invokes the base class destructor */\
      /* _ptr_destructor is used when a pointer marked for auto-destruction gets out of scope */\
     static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _ptr_destructor)(CLASSYC_CLASS_NAME **self_ptr) { \
-           /* Call the destructor for the class */ \
-           PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(*self_ptr); \
-           /* Free the memory allocated for the object and nullity it */ \
-           if (*self_ptr) { \
-               free(*self_ptr); \
-               *self_ptr = NULL; \
-           } \
-    }\
+           /* Call the destructor for the class */                       \
+           PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(*self_ptr);     \
+           /* Free the memory allocated for the object and nullify ptr */\
+           if (*self_ptr) {                                              \
+               free(*self_ptr);                                          \
+               *self_ptr = NULL;                                         \
+           }                                                             \
+    }                                                                    \
     static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(void *self_void) { \
         /* In order to prevent multiple calls to the destructor, we use the _destructor pointer as a marker */ \
-        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void; \
-        if (!self || !self->_destructor) { \
-             /* Destructor already called: do nothing */ \
-             return; \
-        } else { \
+        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void;      \
+        if (!self || !self->_destructor) {                               \
+             /* Destructor already called: do nothing */                 \
+             return;                                                     \
+        } else {                                                         \
             /* Destructor called for the first time: run the user destructor */ \
-        } \
-        /* Call user destructor */ \
+        }                                                                \
+        /* Call user destructor */                                       \
         PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(IS_BASE_FALSE, self); \
-        /* Destroy the mutex for thread safety */ \
-        CLASSYC_MUTEX_DESTROY(self->mutex); \
-    } \
+        /* Destroy the mutex for thread safety */                        \
+        CLASSYC_MUTEX_DESTROY(self->mutex);                              \
+    }                                                                    \
+    /* User destructor function */                                       \
     static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(bool is_base, void *self_void) { \
-        if (!self_void) { \
-            /* NULL self_void can't be casted or processed */ \
-            return; \
-        } \
-        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void; \
-        /* User destructor code */ 
+        if (!self_void) {                                                \
+            /* NULL self_void can't be casted or processed */            \
+            return;                                                      \
+        }                                                                \
+        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void;      \
+        /* User destructor code follows */ 
 
 #define END_DESTRUCTOR \
         /* Call the base class destructor (this will happen recursively upwards in the inheritance tree) */ \
-        if (self) { \
-            /* Call the base class destructor with is_base set to true */ \
-            PREFIXCONCAT(X_GET_BASE_NAME(CLASSYC_CLASS_NAME), _user_destructor)(IS_BASE_TRUE, self); \
+        if (self) {                                                                                         \
+            /* Call the base class destructor with is_base set to true */                                   \
+            PREFIXCONCAT(X_GET_BASE_NAME(CLASSYC_CLASS_NAME), _user_destructor)(IS_BASE_TRUE, self);        \
             /* Mark the destructor as called by setting the function pointer to NULL. Destructors are called once. */\
-            self->_destructor = NULL; \
-        } \
+            self->_destructor = NULL;                                                                       \
+        }                                                                                                   \
     }
 
 /* METHOD CREATION */
-#define METHOD(ret_type, method_name, ...) \
+#define METHOD(ret_type, method_name, ...)                                                                    \
     static inline ret_type PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, ##__VA_ARGS__) { \
-        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void; \
+        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void;                                           \
         /* User method code */
 #define END_METHOD \
     }
 
 /* Threads support for asynchronous methods */
 #if CLASSYC_THREADS_SUPPORTED
-#define ASYNC_METHOD(ret_type, method_name, void_ptr_arg) \
-    /* Thread function prototype */ \
-    static inline int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct); \
-    \
-    /* Wrapper function that starts the thread with arguments */ \
-    static inline thrd_t PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, void *arg) { \
-        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void; \
-        /* Allocate and assign arguments */ \
-        ADD_PREFIX(AsyncArgs) *args_struct = calloc(1, sizeof(ADD_PREFIX(AsyncArgs))); \
-        if (!args_struct) { \
-            fprintf(stderr, "Error: Failed to allocate memory for async method arguments '%s'.\n", #method_name); \
-            return thrd_error; \
-        } \
-        args_struct->self_void = self_void; \
-        args_struct->arg = arg; \
-        /* Start the thread */ \
-        if (CLASSYC_THREAD_CREATE(args_struct->thread_id, PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread), args_struct) != thrd_success) { \
-            /* Handle thread creation error */ \
-            fprintf(stderr, "Error: Failed to create thread for method '%s'.\n", #method_name); \
-            free(args_struct); /* don't leave allocated memory on the heap */ \
-            return thrd_error; \
-        } \
-        /* Return immediately */ \
-        return args_struct->thread_id; \
-    } \
-    \
-    /* Thread function where the user's code will run */ \
-    static inline int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct) { \
-        ADD_PREFIX(AsyncArgs) *args_struct = (ADD_PREFIX(AsyncArgs) *)void_arg_struct; \
-        CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)args_struct->self_void; \
-        thrd_t ADD_PREFIX(thread_id) = args_struct->thread_id; \
-        void *arg = args_struct->arg; \
-        /* User's code starts here */  
+    #define ASYNC_METHOD(ret_type, method_name, void_ptr_arg) \
+        /* Thread function prototype */                                                                     \
+        static inline int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct); \
+        /* Wrapper function that starts the thread with arguments */                                        \
+        static inline thrd_t PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, void *arg) { \
+            CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void;                                     \
+            /* Allocate and assign arguments */                                                             \
+            ADD_PREFIX(AsyncArgs) *args_struct = calloc(1, sizeof(ADD_PREFIX(AsyncArgs)));                  \
+            if (!args_struct) {                                                                             \
+                fprintf(stderr, "Error: Failed to allocate memory for async method arguments '%s'.\n", #method_name); \
+                return thrd_error;                                                                          \
+            }                                                                                               \
+            args_struct->self_void = self_void;                                                             \
+            args_struct->arg = arg;                                                                         \
+            /* Start the thread */                                                                          \
+            if (CLASSYC_THREAD_CREATE(args_struct->thread_id, PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread), args_struct) != thrd_success) { \
+                /* Handle thread creation error */                                                          \
+                fprintf(stderr, "Error: Failed to create thread for method '%s'.\n", #method_name);         \
+                free(args_struct); /* don't leave allocated memory on the heap */                           \
+                return thrd_error;                                                                          \
+            }                                                                                               \
+            /* Return immediately */                                                                        \
+            return args_struct->thread_id;                                                                  \
+        }                                                                                                   \
+        /* Thread function where the user's code will run */                                                \
+        static inline int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct){ \
+            ADD_PREFIX(AsyncArgs) *args_struct = (ADD_PREFIX(AsyncArgs) *)void_arg_struct;                  \
+            CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)args_struct->self_void;                        \
+            thrd_t ADD_PREFIX(thread_id) = args_struct->thread_id;                                          \
+            void *arg = args_struct->arg;                                                                   \
+            /* User's code starts here */                                                                   \
 
-#define END_ASYNC_METHOD \
-        /* User's code ends here */ \
-        return EXIT_ASYNC; \
-    } 
-#define EXIT_ASYNC \
-    /* Free the arguments structure to prevent memory leak, */ \
-    /* then detach the thread when the thread ends (at the end of the function) so it cleans up after itself, */ \
-    /* and evaluate to the int return value of the detachment */ \
-    (free(args_struct), CLASSYC_THREAD_DETACH(ADD_PREFIX(thread_id)))
-#define AWAIT(thread_id) \
-    thrd_join(thread_id, NULL)
+    #define END_ASYNC_METHOD            \
+            /* User's code ends here */ \
+            return EXIT_ASYNC;          \
+        } 
+
+    #define EXIT_ASYNC                                                    \
+        /* Free the arguments structure to prevent memory leak, */        \
+        /* then detach the thread when the thread ends (at the end of the function) so it cleans up after itself, */ \
+        /* and evaluate to the int return value of the detachment */      \
+        (free(args_struct), CLASSYC_THREAD_DETACH(ADD_PREFIX(thread_id)))
+        
+    #define AWAIT(thread_id) \
+        thrd_join(thread_id, NULL)
 #else
 /* Synchronous fallback if threads are not supported */
 #define ASYNC_METHOD(ret_type, method_name, void_ptr_arg) \
     /* Asynchronous methods not supported by the compiler: Synchronous method fallback */ \
-    METHOD(thrd_t, method_name, void_ptr_arg) \
+    METHOD(thrd_t, method_name, void_ptr_arg)             \
         /* User method code, with access to arg */
-#define END_ASYNC_METHOD \
+
+#define END_ASYNC_METHOD  \
         return (thrd_t)0; \
     END_METHOD
+
 #define EXIT_ASYNC ((thrd_t)0)
-#define AWAIT(thread_id) \
+
+#define AWAIT(thread_id)                                   \
     /* Threads not supported: dummy await that ensures the thread is called in case AWAIT(object->method(object, arg)) is used */ \
-    do { \
+    do {                                                   \
         thrd_t ADD_PREFIX(dummy_await_thread) = thread_id; \
     } while (0)
 #endif
@@ -968,45 +974,49 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 /* EVENTS */
 #define GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID) \
     CONCAT(TRICAT(ClassyC_, class_name, _), TRICAT(event_name, _hdlr_, handler_ID))
+
 /* Define an event handler for an instance. Handler_ID is a unique ID for the event handler (letters, numbers, _). */
-#define EVENT_HANDLER(class_name, event_name, handler_ID, ...) \
-    static inline void GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID)(void *self_void, ##__VA_ARGS__); \
+#define EVENT_HANDLER(class_name, event_name, handler_ID, ...)                                                   \
+    static inline void GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID)(void *self_void, ##__VA_ARGS__);  \
     static inline void GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID)(void *self_void, ##__VA_ARGS__) { \
         class_name *self = (class_name *)self_void; \
         /* User code for the event */ 
+
 #define END_EVENT_HANDLER }
+
 /* Register an event handler for an instance. Handler_ID is a unique ID for the defined event handler (letters, numbers, _). */
 /* If another event handler was registered, it is overwritten. */
-#define REGISTER_EVENT(class_name, event_name, handler_ID, instance_name) \
-    do { \
+#define REGISTER_EVENT(class_name, event_name, handler_ID, instance_name)                    \
+    do {                                                                                     \
         instance_name->event_name = GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID); \
     } while (0)
+
 /* Raise an event: use inside any function: RAISE_EVENT(self, event_name[, args]) */
 /* The event handler is executed if it has been registered (pointer not NULL). */
-#define RAISE_EVENT(instance_name, event_name, ...) \
-    do { \
+#define RAISE_EVENT(instance_name, event_name, ...)                                                      \
+    do {                                                                                                 \
         if (instance_name->event_name) instance_name->event_name ((void *)instance_name, ##__VA_ARGS__); \
     } while (0)
+
 /* Raise an event from an interface: use inside any function: RAISE_INTERFACE_EVENT(interface_struct, event_name[, args]) */
 /* As functions manipulating the interface struct may not be aware of the actual class implementing the interface, we need this extra macro. */
-#define RAISE_INTERFACE_EVENT(interface_struct, event_name, ...) \
+#define RAISE_INTERFACE_EVENT(interface_struct, event_name, ...)                             \
     /* We need to dereference the pointer to the function pointer stored in the interface */ \
-    do { \
-        if (interface_struct.event_name && (*interface_struct.event_name)) { \
-            (*interface_struct.event_name)(interface_struct.self, ##__VA_ARGS__); \
-        } \
+    do {                                                                                     \
+        if (interface_struct.event_name && (*interface_struct.event_name)) {                 \
+            (*interface_struct.event_name)(interface_struct.self, ##__VA_ARGS__);            \
+        }                                                                                    \
     } while (0)
-
 
 /* MACROS FOR INSTANCE DECLARATION */
 /* They provide automatic destruction of objects when they go out of scope if the compiler supports cleanup attribute */
 /* Other than that, it might be clearer to declare with normal C syntax*/
 #if CLASSYC_AUTO_DESTROY_SUPPORTED == 1
-   #define CLEANUP_ATTRIBUTE(class_name, destructor_name) \
+    #define CLEANUP_ATTRIBUTE(class_name, destructor_name) \
         __attribute__ ((__cleanup__(PREFIXCONCAT(class_name, destructor_name))))
 #else
-   /* Fallback to no __attribute__ ((__cleanup__)) support */
-   #define CLEANUP_ATTRIBUTE(class_name, destructor_name)
+    /* Fallback to no __attribute__ ((__cleanup__)) support */
+    #define CLEANUP_ATTRIBUTE(class_name, destructor_name)
 #endif
 
 /* MACROS FOR OBJECT ALLOCATION AND INITIALIZATION */
@@ -1014,39 +1024,36 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 /* Macros for object creation syntax */
 /* Heap allocation: AUTODESTROY_PTR(Class) *ptr = NEW_ALLOC(class_name, ...); */
 /* Stack allocation: AUTODESTROY(Class) obj; NEW_INPLACE(class_name, &obj, ...); */
-#define AUTODESTROY_PTR(class_name) \
-    class_name CLEANUP_ATTRIBUTE(class_name, _ptr_destructor)
-#define AUTODESTROY(class_name) \
-    class_name CLEANUP_ATTRIBUTE(class_name, _destructor)
-#define NEW_ALLOC(class_name, ...) \
-    PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, NULL, ##__VA_ARGS__)
-#define NEW_INPLACE(class_name, object_adress, ...) \
+#define AUTODESTROY_PTR(class_name)  class_name CLEANUP_ATTRIBUTE(class_name, _ptr_destructor)
+#define AUTODESTROY(class_name)      class_name CLEANUP_ATTRIBUTE(class_name, _destructor)
+#define NEW_ALLOC(class_name, ...)   PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, NULL, ##__VA_ARGS__)
+#define NEW_INPLACE(class_name, object_address, ...)   \
     /* Sets the already allocated memory zero; needed to avoid undefined values in nested anonymous structs */ \
-    memset(object_adress, 0, sizeof(class_name)); \
-    /* Call the constructor */ \
-    PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, object_adress, ##__VA_ARGS__)
+    memset(object_address, 0, sizeof(class_name));     \
+    /* Call the constructor */                        \
+    PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, object_address, ##__VA_ARGS__)
 
 
 /* MACROS FOR OBJECT DESTRUCTION */
 /* DESTROY_FREE the object and free the allocated memory */
-#define DESTROY_FREE(obj_name) \
-    do { \
-        if ((obj_name) && ((obj_name)->_destructor))  { \
-            (obj_name)->_destructor((obj_name)); \
-            free((obj_name)); \
+#define DESTROY_FREE(obj_name)                         \
+    do {                                               \
+        if ((obj_name) && ((obj_name)->_destructor)) { \
+            (obj_name)->_destructor((obj_name));       \
+            free((obj_name));                          \
             /* Nullifying the pointer to prevent auto-destructor to call free again */ \
-            obj_name = NULL; \
-        } \
+            obj_name = NULL;                           \
+        }                                              \
     } while (0)
 
 /* DESTROY macro to call destructor of an object allocated without freeing the memory */
-#define DESTROY(object_name) \
-    do { \
-        if (object_name._destructor) { \
+#define DESTROY(object_name)                                 \
+    do {                                                     \
+        if (object_name._destructor) {                       \
             object_name._destructor((void *)&(object_name)); \
-            /* DESTROY doesn't free the memory.*/\
+            /* DESTROY doesn't free the memory.*/            \
             /* It also doesn't set the pointer to NULL, for it receives the object (stack or dereferenced heap) */ \
-        } \
+        }                                                    \
     } while (0)
 
 
