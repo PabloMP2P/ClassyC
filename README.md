@@ -5,9 +5,8 @@ ClassyC is an experimental and recreational library not intended for production 
 
 ## Creating a class
 1. **Include `ClassyC.h`.**
-2. **Define CLASS with the name of the class.** To avoid redefinition compiler warnings, use `#undef CLASS` before every new class (all other macros need not be undefined).
+2. **Define CLASS with the name of the class.** To avoid redefinition compiler warnings, use `#undef CLASS` before every new class, or at the end of a class (this might be useful if you are defining multiple classes in the same file).
    ```c
-   #undef CLASS
    #define CLASS Car
    ```
 3. **Define the x-macro `CLASS_class_name(Base, Interface, Data, Event, Method, Override)`** to declare the base class, interfaces, data members, events, methods, and overrides.
@@ -15,8 +14,8 @@ ClassyC is an experimental and recreational library not intended for production 
    - Interfaces, data members, events, and methods are inherited from the base class (and its base classes, recursively).
    - Classes implement interfaces. When a class declares that it uses an interface, it must also declare and define all the members (data, events, and methods) of that interface, or inherit them from a parent class.
    - Overridden methods must exactly match the signatures (return type, number of parameters, and parameter types) of the original method to ensure proper behavior.
-   - Users should not redeclare any members already declared in base classes (name collision will occur).
-   - All classes must inherit from another class, or the OBJECT class, so all objects contain the OBJECT class members.
+   - Declarations should not redeclare any members already present in base classes (name collision will occur), except for Override methods.
+   - All classes must inherit from another class, or the OBJECT class, so all objects inherit the OBJECT class members (a destructor and a mutex).
    Syntax:
    - `Base(base_class_name)` - To declare the base class (use `OBJECT` if it has no base class).
    - `Interface(interface_name)` - To declare an interface.
@@ -47,11 +46,11 @@ ClassyC is an experimental and recreational library not intended for production 
    ```
    ```c
    CONSTRUCTOR(int km_total_when_bought)
-     INIT_BASE();
-     self->position = 0;
-     self->km_total = km_total_when_bought;
-     self->km_since_last_fuel = 0;
-     if (!is_base) {
+       INIT_BASE();
+       self->position = 0;
+       self->km_total = km_total_when_bought;
+       self->km_since_last_fuel = 0;
+       if (!is_base) {
        // Initialization code specific to the most derived class, for example, counting the number of instances of the class
      }     
    END_CONSTRUCTOR
@@ -65,10 +64,10 @@ ClassyC is an experimental and recreational library not intended for production 
    - Close the method implementation with `END_METHOD`.
    ```c
    METHOD(void, move, int speed, int distance)
-     self->position += distance;
-     self->km_since_last_fuel += distance;
-     int km_to_collapse = 400 - self->km_since_last_fuel;
-     if (km_to_collapse < 100) {
+       self->position += distance;
+       self->km_since_last_fuel += distance;
+       int km_to_collapse = 400 - self->km_since_last_fuel;
+       if (km_to_collapse < 100) {
        RAISE_EVENT(self, on_need_fuel, km_to_collapse);
      }
    END_METHOD
@@ -172,12 +171,12 @@ Interfaces define contracts that implementing classes must fulfill. When impleme
 3. **To implement the interface, make sure the class declares or inherits all the members and includes the interface name in its `CLASS_class_name` interfaces list.**
    ```c
    #define CLASS_Vehicle(Base, Interface, Data, Event, Method, Override)\
-     Base(OBJECT) Interface(Sellable) Interface(Moveable) \
-     Data(int, id) \
-     Data(int, position) \
-     Event(on_move, int distance_moved) \
-     Method(int, estimate_price) \
-     Method(void, move, int speed, int distance)
+       Base(OBJECT) Interface(Sellable) Interface(Moveable) \
+       Data(int, id) \
+       Data(int, position) \
+       Event(on_move, int distance_moved) \
+       Method(int, estimate_price) \
+       Method(void, move, int speed, int distance)
    ```
 4. **Access the Interface**
 The interface cast function `to_InterfaceName` is stored within the object. You can access the interface by calling this function as a member of the object, passing the instance as the first parameter. The function returns an interface struct with pointers to the interface members in the object.
@@ -189,12 +188,12 @@ The resulting interface accessor for an interface is a struct of type `interface
    - Interface structs should be handled carefully to avoid shallow copies leading to unintended side effects.
    ```c
    void swap_movables_position(Moveable object1, Moveable object2) {
-      int distance_moved = abs(*object1.position - *object2.position);
-      int temp = *object1.position;
-      *object1.position = *object2.position;
-      *object2.position = temp;
-      RAISE_INTERFACE_EVENT(object1, on_move, distance_moved);
-      RAISE_INTERFACE_EVENT(object2, on_move, distance_moved);
+       int distance_moved = abs(*object1.position - *object2.position);
+       int temp = *object1.position;
+       *object1.position = *object2.position;
+       *object2.position = temp;
+       RAISE_INTERFACE_EVENT(object1, on_move, distance_moved);
+       RAISE_INTERFACE_EVENT(object2, on_move, distance_moved);
    }
    // Usage: in this case we use two objects of different types.
    swap_movables_position(my_car->to_Moveable(my_car), my_elephant.to_Moveable(&my_elephant)); // Also note that my_elephant is in the stack.
@@ -211,7 +210,7 @@ The resulting interface accessor for an interface is a struct of type `interface
 - The declaration in the CLASS_class_name macro of an asynchronous method is exactly the same as for a synchronous method.
 - To make a method async simply use `ASYNC_METHOD` instead of `METHOD` in its body definition.
 - The self pointer and the `void *arg` parameter are available in the asynchronous method body.
-- To return from an asynchronous method beforehand, return the value of the `EXIT_ASYNC` macro: `Return EXIT_ASYNC;` This ensures that the thread is detached and the memory allocated for the arguments structure is freed.
+- To return from an asynchronous method beforehand, return the value of the `EXIT_ASYNC` macro: `return EXIT_ASYNC;` This ensures that the thread is detached and the memory allocated for the arguments structure is freed.
 - Async methods are supported if the compiler provides <threads.h> support or if the TinyCThread library files tinycthread.h and tinycthread.c are present in the ClassyC directory (source available at: https://github.com/tinycthread/tinycthread).
 - If the compiler doesn't support threads, and the TinyCThread library is not available, asynchronous methods will be disabled and the library will fall back to synchronous methods.
 - The availability of async methods can be checked with the CLASSYC_THREADS_SUPPORTED macro.
@@ -231,40 +230,38 @@ The resulting interface accessor for an interface is a struct of type `interface
    ```
 - Use the `AWAIT` macro to pause the current thread until the asynchronous method finishes. This is particularly useful when subsequent operations depend on the result of an asynchronous call.
 - Use the thread identifier returned by the asynchronous method with the `AWAIT` macro.
-```c
-AWAIT(my_car->save_data(my_car, data_arg));
-```
-or
-```c
-// Invoke an asynchronous method
-thrd_t thread_id = my_car->save_data(my_car, data_arg);
-
-// Wait for the asynchronous method to complete
-AWAIT(thread_id);
-
-// Continue with operations that depend on the completion of save_data
-if (my_car->finished) {
-    printf("Data saved successfully.\n");
-}
-```
-Use the `THREAD_SLEEP` macro to pause the current thread for a given duration.
-```c
-ASYNC_METHOD(thrd_t, async_method, void *arg)
-    // ...
-    THREAD_SLEEP(1000); // Stop this method for 1000 milliseconds (1 second), then continue
-    // ...
-END_ASYNC_METHOD
-```
+   ```c
+   AWAIT(my_car->save_data(my_car, data_arg));
+   ```
+   or
+   ```c
+   // Invoke an asynchronous method
+   thrd_t thread_id = my_car->save_data(my_car, data_arg);
+   // Wait for the asynchronous method to complete
+   AWAIT(thread_id);
+   // Continue with operations that depend on the completion of save_data
+   if (my_car->finished) {
+       printf("Data saved successfully.\n");
+   }
+   ```
+- Use the `THREAD_SLEEP` macro to pause the current thread for a given duration.
+   ```c
+   ASYNC_METHOD(thrd_t, async_method, void *arg)
+       // ...
+       THREAD_SLEEP(1000); // Stop this method for 1000 milliseconds (1 second), then continue
+       // ...
+   END_ASYNC_METHOD
+   ```
 ## Synchronization and object locking
 - To ensure thread safety when working with shared resources across multiple threads, ClassyC provides an easy to use mutex support through predefined macros.
 - Every object has a `mutex` data member of type `mtx_t`, which can be used to synchronize access to the object.
 - Lock an object to read or write to it in a thread-safe way using the `LOCK_OBJECT` macro.
 - Unlock an object using the `UNLOCK_OBJECT` macro.
-    ```c
-    LOCK_OBJECT(my_app);
-    my_app->do_something();
-    UNLOCK_OBJECT(my_app);
-    ```
+   ```c
+   LOCK_OBJECT(my_app);
+   my_app->do_something();
+   UNLOCK_OBJECT(my_app);
+   ```
 - Always acquire a lock using `LOCK_OBJECT(object_ptr)` before accessing or modifying shared data members. Release the lock immediately after the critical section using `UNLOCK_OBJECT(object_ptr)`.
 - Minimize the scope of locked sections to reduce contention.
 - Avoid deadlocks by maintaining a consistent locking order across different objects and methods.
@@ -275,33 +272,33 @@ These macros can be defined before including this header to customize some of th
 - **CLASSYC_CLASS_NAME**: Used to define the macro holding the class name, by default it is set to `CLASS` but can be changed to any other name to avoid conflicts.
   The resulting macro name will mark the syntax used to declare classes. If CLASSYC_CLASS_NAME is not defined, the default is `CLASS`.
   The library uses CLASSYC_CLASS_NAME internally to access the class name: CLASSYC_CLASS_NAME expands to `CLASS` (or the name defined to it) internally, which itself expands to the name of the class.
-  ```c
-  #define CLASSYC_CLASS_NAME NEW_CLASS_NAME
-  #define NEW_CLASS_NAME Aircraft
-  ```
-  ```c
-  #undef CLASSYC_CLASS_NAME
-  #define CLASS Aircraft
-  ```
+   ```c
+   #define CLASSYC_CLASS_NAME NEW_CLASS_NAME
+   #define NEW_CLASS_NAME Aircraft
+   ```
+   ```c
+   #undef CLASSYC_CLASS_NAME
+   #define CLASS Aircraft
+   ```
 - **CLASSYC_CLASS_IMPLEMENT**: Used to define the prefix of the macro holding the class implementation. Default: `#define CLASSYC_CLASS_IMPLEMENT CLASS_`
   If you redefine `CLASSYC_CLASS_IMPLEMENT`, you must also define the x-macro for the `OBJECT` class with the same prefix and the `Data(void, DESTRUCTOR_FUNCTION_POINTER)` member. The (Base, Interface, Data, Event, Method, Override) parameter declaration is mandatory.
-  ```c
-  #define CLASSYC_CLASS_IMPLEMENT DECLARE_CLASS_
-  #define DECLARE_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
-      Data(void, DESTRUCTOR_FUNCTION_POINTER) Data(mtx_t, mutex)
-  #define DECLARE_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
-  ```
-  ```c
-  #define CLASSYC_CLASS_IMPLEMENT CUSTOM_CLASS_
-  #define CUSTOM_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
-      Data(void, DESTRUCTOR_FUNCTION_POINTER) Data(mtx_t, mutex)
-  #define CUSTOM_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
-  ```
+   ```c
+   #define CLASSYC_CLASS_IMPLEMENT DECLARE_CLASS_
+   #define DECLARE_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
+       Data(void, DESTRUCTOR_FUNCTION_POINTER) Data(mtx_t, mutex)
+   #define DECLARE_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
+   ```
+   ```c
+   #define CLASSYC_CLASS_IMPLEMENT CUSTOM_CLASS_
+   #define CUSTOM_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
+       Data(void, DESTRUCTOR_FUNCTION_POINTER) Data(mtx_t, mutex)
+   #define CUSTOM_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
+   ```
 - **CLASSYC_INTERFACE_DECLARATION**: The name of the macro that declares the interface. Default: `#define CLASSYC_INTERFACE_DECLARATION I_`
-  ```c
-  #define CLASSYC_INTERFACE_DECLARATION NEW_INTERFACE_
-  #define NEW_INTERFACE_Moveable(Data, Event, Method)
-  ```
+   ```c
+   #define CLASSYC_INTERFACE_DECLARATION NEW_INTERFACE_
+   #define NEW_INTERFACE_Moveable(Data, Event, Method)
+   ```
 - **CLASSYC_DISABLE_RUNTIME_CHECKS**: Disable runtime checks for inheritance depth. Default: not defined.
 - **CLASSYC_ENABLE_COMPILE_TIME_CHECKS**: Enable compile-time checks for inheritance depth. Default: not defined.
 - **CLASSYC_DISABLE_ASYNC_METHODS**: Disable asynchronous methods (and therefore not require thread support headers). Default: not defined.
