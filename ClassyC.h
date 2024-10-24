@@ -27,7 +27,6 @@ ClassyC is an experimental and recreational library not intended for production 
    - `Method(ret_type, method_name[, args])` - To declare a new method.
    - `Override(ret_type, method_name[, args])` - To declare an overridden method.
    ```c
-   #undef CLASS
    #define CLASS Car
    #define CLASS_Car(Base, Interface, Data, Event, Method, Override) \
        Base(Vehicle) \
@@ -280,7 +279,7 @@ These macros can be defined before including this header to customize some of th
    #define NEW_CLASS_NAME Aircraft
    ```
    ```c
-   #undef CLASSYC_CLASS_NAME
+   #include "ClassyC.h"
    #define CLASS Aircraft
    ```
 - **CLASSYC_CLASS_IMPLEMENT**: Used to define the prefix of the macro holding the class implementation. Default: `#define CLASSYC_CLASS_IMPLEMENT CLASS_`
