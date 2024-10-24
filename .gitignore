@@ -50,6 +50,7 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+tinycthread/
 tinycthread.c
 tinycthread.h
 classyc_sample
