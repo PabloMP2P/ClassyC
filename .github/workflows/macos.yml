@@ -1,0 +1,20 @@
+on: [push, pull_request]
+name: macos tests
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: rlalik/setup-cpp-compiler@master
+        with:
+          compiler: gcc-12
+      - run: |
+          cd tests
+          make
+        env:
+          CC: gcc-12
+          CXX: g++-12
+          CFLAGS: "-DCLASSYC_DISABLE_ASYNC_METHODS=1"

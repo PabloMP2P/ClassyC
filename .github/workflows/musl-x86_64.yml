@@ -1,0 +1,22 @@
+on: [push, pull_request]
+name: musl x86_64 tests
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup latest Alpine Linux
+        uses: jirutka/setup-alpine@v1
+        with:
+          branch: v3.18
+          packages: >
+            build-base
+            git
+      - name: Run tests
+        run: |
+          uname -m
+          git clone https://github.com/tinycthread/tinycthread.git
+          cd tests
+          make
+
+        shell: alpine.sh {0}

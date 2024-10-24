@@ -1,0 +1,19 @@
+on: [push, pull_request]
+name: ubuntu tests
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: rlalik/setup-cpp-compiler@master
+        with:
+          compiler: gcc-latest
+      - run: |
+          git clone https://github.com/tinycthread/tinycthread.git
+          cp tinycthread/source/tinycthread.c ./
+          cp tinycthread/source/tinycthread.h ./
+          cd tests
+          make
