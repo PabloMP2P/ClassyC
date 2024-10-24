@@ -13,7 +13,5 @@ jobs:
           compiler: gcc-latest
       - run: |
           git clone https://github.com/tinycthread/tinycthread.git
-          cp tinycthread/source/tinycthread.c ./
-          cp tinycthread/source/tinycthread.h ./
           cd tests
           make
