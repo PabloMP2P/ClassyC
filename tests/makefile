@@ -1,4 +1,9 @@
-CC ?= gcc
+ifeq ($(OS),Windows_NT)
+    CC = gcc
+else
+    CC ?= gcc
+endif
+
 CFLAGS += -I../ -Iunity
 UNITY_SRC = unity.c
 SRC = ../ClassyC.h ./test_ClassyC_All.c
