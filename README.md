@@ -1,5 +1,6 @@
 # ClassyC
-A library for OOP in C that allows simple syntax for creating and using classes with polymorphism, inheritance, interfaces, events, sync and async methods, automatic method registration and automatic destruction of objects and freeing of memory.
+A portable library for OOP in C that allows simple syntax for creating and using classes with polymorphism, inheritance, interfaces, events, sync and async methods, automatic method registration and automatic destruction of objects and freeing of memory.
+
 
 ClassyC is an experimental and recreational library not intended for production use. Anything can change at any time. Use at your own risk.
 
@@ -301,6 +302,7 @@ These macros can be defined before including this header to customize some of th
 - **CLASSYC_DISABLE_RUNTIME_CHECKS**: Disable runtime checks for inheritance depth. Default: not defined.
 - **CLASSYC_ENABLE_COMPILE_TIME_CHECKS**: Enable compile-time checks for inheritance depth. Default: not defined.
 - **CLASSYC_DISABLE_ASYNC_METHODS**: Disable asynchronous methods (and therefore not require thread support headers). Default: not defined.
+- **CLASSYC_DISABLE_THREAD_SLEEP**: Disable thread sleep. In Windows, this avoids the need of inclusion of the windows.h header. Default: not defined.
 ## Additional notes
 - ClassyC supports automatic destruction of objects when they go out of scope if the compiler supports the `__attribute__((__cleanup__))` attribute (e.g., GCC and Clang).
 - Class definitions must be at the global scope. Objects can be declared at any scope, but can't be instantiated outside a function. Interfaces are declared in the top-level scope, before any class that uses them.

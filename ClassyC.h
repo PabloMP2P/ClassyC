@@ -2,7 +2,8 @@
   ClassyC.h - (c) Pablo Soto under the MIT License
 
 # ClassyC
-A library for OOP in C that allows simple syntax for creating and using classes with polymorphism, inheritance, interfaces, events, sync and async methods, automatic method registration and automatic destruction of objects and freeing of memory.
+A portable library for OOP in C that allows simple syntax for creating and using classes with polymorphism, inheritance, interfaces, events, sync and async methods, automatic method registration and automatic destruction of objects and freeing of memory.
+
 
 ClassyC is an experimental and recreational library not intended for production use. Anything can change at any time. Use at your own risk.
 
