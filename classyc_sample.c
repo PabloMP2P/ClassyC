@@ -1,27 +1,28 @@
-// classyc_sample.c - A sample program to showcase the ClassyC library
+/* classyc_sample.c - A sample program to showcase the ClassyC library */
 
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
 
-// Some (optional) macros can be used to configure the library naming conventions
-// In this case, we are using the default ones: CLASS, CLASS_ and I_, so the
-// following lines are not needed and are just for demonstration purposes.
-// #define CLASSYC_CLASS_NAME CLASS
-// #define CLASSYC_CLASS_IMPLEMENT CLASS_
-// #define CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
-//     Data(void, DESTRUCTOR_FUNCTION_POINTER)
-// #define CLASSYC_INTERFACE_DECLARATION I_
-
+/* Some (optional) macros can be used to configure the library naming conventions
+ * In this case, we are using the default ones: CLASS, CLASS_ and I_, so the
+ * following lines are not needed and are just for demonstration purposes:
+ * #define CLASSYC_CLASS_NAME CLASS
+ * #define CLASSYC_CLASS_IMPLEMENT CLASS_
+ * #define CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
+ *     Data(void, DESTRUCTOR_FUNCTION_POINTER)
+ * #define CLASSYC_INTERFACE_DECLARATION I_
+ */
+  
 #include "ClassyC.h"
 
-// Number of objects to create and destroy in the speed test
+/* Number of objects to create and destroy in the speed test */
 #define TEST_NUM_OBJECTS 100000ull
-// We'll count instances created and destroyed to show how auto-destruction works to prevent memory leaks
+/* We'll count instances created and destroyed to show how auto-destruction works to prevent memory leaks */
 size_t num_objects_created = 0;
 size_t num_objects_destroyed = 0;
 
-// Interfaces 
+/* Interfaces */
 #define I_Moveable(Data, Event, Method) \
     Data(int, position) \
     Event(on_move, int distance_moved) \
@@ -33,7 +34,7 @@ CREATE_INTERFACE(Moveable)
     Method(int, estimate_price)
 CREATE_INTERFACE(Sellable)
 
-// Classes 
+/* Classes */
 #undef CLASS
 #define CLASS Vehicle
 #define CLASS_Vehicle(Base, Interface, Data, Event, Method, Override)\
@@ -165,8 +166,10 @@ ASYNC_METHOD(thrd_t, start_clock, void* arg)
             break;
         }
 #if CLASSYC_THREADS_SUPPORTED == 0
-        // The compiler doesn't support threads, and the tinycthread library is not available,
-        // You can use CLASSYC_THREADS_SUPPORTED to change the program's behavior
+        /* 
+         * The compiler doesn't support threads, and the tinycthread library is not available,
+         * You can use CLASSYC_THREADS_SUPPORTED to change the program's behavior
+         */
 #endif
     }
     printf("Clock %d stopped\n", self->clock_id);
@@ -181,20 +184,19 @@ METHOD(void, stop_clock)
     }
 END_METHOD
 
-
-// Interfaces can be used as types, and they contain pointers to the object members
+/* Interfaces can be used as types, and they contain pointers to the object members */
 void swap_movables_position(Moveable object1, Moveable object2) {
-    // interface members are pointers and must be dereferenced to access the actual values.
+    /* interface members are pointers and must be dereferenced to access the actual values */
     int distance_moved = abs(*object1.position - *object2.position);
     int temp = *object1.position;
     *object1.position = *object2.position;
     *object2.position = temp;
-    // Events can be raised through interfaces as well. If no event handler is registered, it will have no effect.
+    /* Events can be raised through interfaces as well. If no event handler is registered, it will have no effect. */
     RAISE_INTERFACE_EVENT(object1, on_move, distance_moved);
     RAISE_INTERFACE_EVENT(object2, on_move, distance_moved);
 }
 
-// Event handlers are functions that handle events 
+/* Event handlers are functions that handle events */
 EVENT_HANDLER(Car, on_need_fuel, mycar_lowfuel, int km_to_collapse)
     if (km_to_collapse < 10) {
         printf("Fuel level critical! Need to refuel in less than %d km!\n", km_to_collapse);
@@ -219,7 +221,7 @@ void successful_exit(void) {
 }
 
 void create_objects_inside_function(void) {
-    // This function is used to test the automatic destruction of objects when they go out of scope 
+    /* This function is used to test the automatic destruction of objects when they go out of scope */
     
     AUTODESTROY_PTR(Car) *local_heap_car = NEW_ALLOC(Car, 200);
     
@@ -229,7 +231,7 @@ void create_objects_inside_function(void) {
     printf("Inside function, the objects have been created.\n"); 
 
 #if CLASSYC_AUTO_DESTROY_SUPPORTED == 0
-    // Compiler doesn't support auto-destruction; destroy the objects manually
+    /* Compiler doesn't support auto-destruction; destroy the objects manually */
     DESTROY_FREE(local_heap_car);
     DESTROY(local_stack_car);
 #endif
@@ -247,11 +249,11 @@ int main(void){
         fprintf(stderr, "Failed to create Car object.\n");
         return EXIT_FAILURE;
     }
-    REGISTER_EVENT(Car, on_need_fuel, mycar_lowfuel, my_car); // Register the event handler
-    REGISTER_EVENT(Car, on_move, mycar_move, my_car); // Register the event handler
+    REGISTER_EVENT(Car, on_need_fuel, mycar_lowfuel, my_car); /* Register the event handler */
+    REGISTER_EVENT(Car, on_move, mycar_move, my_car); /* Register the event handler */
     printf("Event registered\n");
-    my_car->km_total += 120; // Access to data fields
-    my_car->move(my_car, 100, 395); // This will fire the on_need_fuel event
+    my_car->km_total += 120; /* Access to data fields */
+    my_car->move(my_car, 100, 395); /* This will fire the on_need_fuel event */
 
     my_car->id=79;
     printf("\nAccessing the same id from different contexts\n");
@@ -261,41 +263,42 @@ int main(void){
     printf("%d in *((Vehicle *)my_car)->to_Sellable((Vehicle *)my_car).id\n", *((Vehicle *)my_car)->to_Sellable((Vehicle *)my_car).id); 
 
     printf("\nAccessing the same method from different contexts\n");
-    Vehicle *my_car_as_vehicle = (Vehicle *)my_car; // Casting works as expected: same methods, same fields
+    Vehicle *my_car_as_vehicle = (Vehicle *)my_car; /* Casting works as expected: same methods, same fields */
     printf("%d from my_car->estimate_price(my_car)\n", my_car->estimate_price(my_car));
     printf("%d from my_car_as_vehicle->estimate_price(my_car_as_vehicle)\n", my_car_as_vehicle->estimate_price(my_car_as_vehicle));
     printf("%d from my_car->to_Sellable(my_car).estimate_price(my_car)\n", my_car->to_Sellable(my_car).estimate_price(my_car));
     printf("%d from my_car_as_vehicle->to_Sellable(my_car_as_vehicle).estimate_price(my_car_as_vehicle)\n", my_car_as_vehicle->to_Sellable(my_car_as_vehicle).estimate_price(my_car_as_vehicle));
    
-    // Elephant object allocated on the stack. We'll use it without any indirection for demonstration purposes.
+    /* Elephant object allocated on the stack. We'll use it without any indirection for demonstration purposes. */
     printf("\nCreating an Elephant object on the stack\n");
     AUTODESTROY(Elephant) my_elephant; 
     NEW_INPLACE(Elephant, &my_elephant);
 
-    my_elephant.position = 24; // Note that as my_elephant is not a pointer, we access the fields with the dot operator.
+    my_elephant.position = 24; /* Note that as my_elephant is not a pointer, we access the fields with the dot operator. */
     Elephant *my_elephant_ptr = &my_elephant;
-    my_elephant_ptr->position = 24; // If we have a pointer to the object, access to the members is done with the arrow operator.
+    my_elephant_ptr->position = 24; /* If we have a pointer to the object, access to the members is done with the arrow operator. */
 
     printf("\nUsing the interface for polymorphism\n");
     printf("Positions ->  my_car: %d, my_elephant: %d\n", my_car->position, my_elephant.position);
-    swap_movables_position(my_car->to_Moveable(my_car), my_elephant.to_Moveable(&my_elephant)); // Using the interface for polymorphism
+    swap_movables_position(my_car->to_Moveable(my_car), my_elephant.to_Moveable(&my_elephant)); /* Using the interface for polymorphism */
     printf("Positions ->  my_car: %d, my_elephant: %d\n", my_car->position, my_elephant.position);
     
     printf("\nUsing the interface for polymorphism in casted context\n");
     printf("Positions ->  (Vehicle *)my_car: %d, my_elephant: %d\n", ((Vehicle *)my_car)->position, my_elephant.position);
-    swap_movables_position(((Vehicle *)my_car)->to_Moveable((Vehicle *)my_car), my_elephant.to_Moveable(&my_elephant)); // Using the interface for polymorphism
+    swap_movables_position(((Vehicle *)my_car)->to_Moveable((Vehicle *)my_car), my_elephant.to_Moveable(&my_elephant)); /* Using the interface for polymorphism */
     printf("Positions ->  (Vehicle *)my_car: %d, my_elephant: %d\n", ((Vehicle *)my_car)->position, my_elephant.position);
 
     printf("\nCreating a large number of objects in the heap and the stack\n");
     clock_t start_time = clock();
-    for (size_t iter = 0; iter < TEST_NUM_OBJECTS; iter++) {
+    size_t iter;
+    for (iter = 0; iter < TEST_NUM_OBJECTS; iter++) {
         AUTODESTROY_PTR(TinyClass) *tiny_heap_object = NEW_ALLOC(TinyClass);
         if (tiny_heap_object == NULL) {
             printf("Memory allocation failed\n");
             return 1;
         }
 #if CLASSYC_AUTO_DESTROY_SUPPORTED == 0 
-        // Compiler doesn't support auto-destruction; destroy the objects manually
+        /* Compiler doesn't support auto-destruction; destroy the objects manually */
         DESTROY_FREE(tiny_heap_object);
 #endif
     }
@@ -304,12 +307,12 @@ int main(void){
     printf("Time taken to create and destroy %llu objects of size %d in the heap: %f seconds. (%.2f objects/second)\n", TEST_NUM_OBJECTS, (int)sizeof(TinyClass), cpu_time_used, TEST_NUM_OBJECTS / cpu_time_used);
 
     start_time = clock();
-    for (size_t iter = 0; iter < TEST_NUM_OBJECTS; iter++) {
+    for (iter = 0; iter < TEST_NUM_OBJECTS; iter++) {
         AUTODESTROY(TinyClass) tiny_stack_object;
         NEW_INPLACE(TinyClass, &tiny_stack_object);
 
 #if CLASSYC_AUTO_DESTROY_SUPPORTED == 0
-        // Compiler doesn't support auto-destruction; destroy the objects manually
+        /* Compiler doesn't support auto-destruction; destroy the objects manually */
         DESTROY(tiny_stack_object);
 #endif
     }
@@ -318,7 +321,7 @@ int main(void){
     printf("Time taken to create and destroy %llu objects of size %d in the stack: %f seconds. (%.2f objects/second)\n", TEST_NUM_OBJECTS, (int)sizeof(TinyClass), cpu_time_used, TEST_NUM_OBJECTS / cpu_time_used);
 
 #if CLASSYC_AUTO_DESTROY_SUPPORTED == 0
-    // Compiler doesn't support auto-destruction; destroy the objects manually
+    /* Compiler doesn't support auto-destruction; destroy the objects manually */
     DESTROY_FREE(my_car);
     DESTROY(my_elephant);
 #endif
@@ -337,7 +340,8 @@ int main(void){
     my_async_class3->start_clock(my_async_class3, &arg4);
     
     printf("Main function - waiting for 3 seconds...\n");
-    for (int wait_count = 1; wait_count <= 3; wait_count++) {
+    int wait_count;
+    for (wait_count = 1; wait_count <= 3; wait_count++) {
         clock_t start_last_wait = clock();
         while (clock() - start_last_wait < 1 * CLOCKS_PER_SEC) {
             /* Wait for threads to finish */
@@ -362,7 +366,7 @@ int main(void){
     printf("Main function - total seconds elapsed in clock 1: %d\n", my_async_class1->total_seconds_elapsed);
 
 #if CLASSYC_AUTO_DESTROY_SUPPORTED == 0
-    // Compiler doesn't support auto-destruction; destroy the objects manually
+    /* Compiler doesn't support auto-destruction; destroy the objects manually */
     DESTROY_FREE(my_async_class1);
     DESTROY_FREE(my_async_class2);
     DESTROY_FREE(my_async_class3);

@@ -304,6 +304,7 @@ These macros can be defined before including this header to customize some of th
 - **CLASSYC_DISABLE_RUNTIME_CHECKS**: Disable runtime checks for inheritance depth. Default: not defined.
 - **CLASSYC_ENABLE_COMPILE_TIME_CHECKS**: Enable compile-time checks for inheritance depth. Default: not defined.
 - **CLASSYC_DISABLE_ASYNC_METHODS**: Disable asynchronous methods (and therefore not require thread support headers). Default: not defined.
+- **CLASSYC_DISABLE_THREAD_SLEEP**: Disable thread sleep. In Windows, this avoids the need of inclusion of the windows.h header. Default: not defined.
 ## Additional notes
 - ClassyC supports automatic destruction of objects when they go out of scope if the compiler supports the `__attribute__((__cleanup__))` attribute (e.g., GCC and Clang).
 - Class definitions must be at the global scope. Objects can be declared at any scope, but can't be instantiated outside a function. Interfaces are declared in the top-level scope, before any class that uses them.
@@ -382,8 +383,35 @@ These macros can be defined before including this header to customize some of th
 #define PREFIXCONCAT(a, b) TRICAT(CLASSYC_PREFIX, a, b)
 #define QUOTE_HELPER(str) #str
 #define QUOTE(str) QUOTE_HELPER(str)
+
+#define WRITE_THIRD_ARG(a,b,c,...) c
+/* Check if the compiler supports __VA_OPT__ */
+#define VA_OPT_SUPPORTED_HELPER(...) WRITE_THIRD_ARG(__VA_OPT__(,),1,0,)
+#define VA_OPT_SUPPORTED VA_OPT_SUPPORTED_HELPER(?)
+/* Check if the compiler supports ,##__VA_ARGS__ */
+#define VA_ARGS_EXT_SUPPORTED_HELPER(...) WRITE_THIRD_ARG(,##__VA_ARGS__,0,1,)
+#define VA_ARGS_EXT_SUPPORTED VA_ARGS_EXT_SUPPORTED_HELPER()
+
+#if VA_OPT_SUPPORTED == 1
+    #define WITHOUT_COMMA(...) __VA_OPT__(,) __VA_ARGS__
+#elif VA_ARGS_EXT_SUPPORTED == 1
+    #define WITHOUT_COMMA(...) ,##__VA_ARGS__
+#else
+    /* If neither __VA_OPT__ nor ,##__VA_ARGS__ is supported, we'll resort to ##__VA_ARGS__ */
+    /* (Although it looks like the preprocessor is not able to remove the trailing comma, it's harmless) */
+    #define WITHOUT_COMMA(...) ,##__VA_ARGS__
+#endif
+
 /* WRITE_NOTHING is used to expand x-macros selectively, by setting WRITE_NOTHING as the macro you want to omit */
 #define WRITE_NOTHING(...)
+
+/* The inline keyword was not supported in ANSI C, so we need to check if the compiler supports it */
+#if __STDC_VERSION__ >= 199901L
+    #define CLASSYC_INLINE inline
+#else
+    #define CLASSYC_INLINE
+#endif
+
 
 /* The name of the macro that declares the class name: by default it is CLASS */
 #ifndef CLASSYC_CLASS_NAME
@@ -396,7 +424,7 @@ These macros can be defined before including this header to customize some of th
 #ifndef CLASSYC_CLASS_IMPLEMENT
    #define CLASSYC_CLASS_IMPLEMENT CLASS_
    #define CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) Data(void, DESTRUCTOR_FUNCTION_POINTER) Data(mtx_t, mutex)
-#endif // CLASSYC_CLASS_IMPLEMENT
+#endif /* CLASSYC_CLASS_IMPLEMENT */
 
 #define GET_IMPLEMENTS(class_name)CONCAT(CLASSYC_CLASS_IMPLEMENT, class_name)
 
@@ -449,6 +477,10 @@ These macros can be defined before including this header to customize some of th
     #define CLASSYC_DISABLE_ASYNC_METHODS 0
 #endif
 
+#ifndef CLASSYC_DISABLE_THREAD_SLEEP
+    #define CLASSYC_DISABLE_THREAD_SLEEP 0
+#endif
+
 #if CLASSYC_DISABLE_ASYNC_METHODS == 0
     #define CLASSYC_THREADS_SUPPORTED 1
     #if defined(_WIN32) || defined(_WIN64) || __STDC_NO_THREADS__
@@ -487,27 +519,32 @@ These macros can be defined before including this header to customize some of th
     #define mtx_plain     0
     #define mtx_timed     1
     #define mtx_recursive 2
-    #define CLASSYC_MUTEX_INIT(mutex, mutex_type) (mutex = 0)
-    #define CLASSYC_MUTEX_DESTROY(mutex) (mutex = 1)
+    #define CLASSYC_MUTEX_INIT(mutex, mutex_type) /* Unnecessary: mutex = 0 */
+    #define CLASSYC_MUTEX_DESTROY(mutex) /* Unnecessary: mutex = 1 */
     #define CLASSYC_THREAD_CREATE(thread_id, method_thread_function, args_struct) \
         thread_id = &method_thread_function(args_struct)
     #define CLASSYC_THREAD_DETACH(thread_id)
     /* Macros called by the user */
     /* portable THREAD_SLEEP when threads are not supported */
-    #ifdef _WIN32
-        #include <windows.h>
-        #define THREAD_SLEEP(milliseconds) Sleep(milliseconds)
-    #elif __unix__
-        #include <time.h>
-        #define THREAD_SLEEP(milliseconds) do {                       \
-            /* convert milliseconds to seconds and nanoseconds */     \
-            long long seconds = milliseconds / 1000;                  \
-            long long nanoseconds = (milliseconds % 1000) * 1000000;  \
-            struct timespec duration = {seconds, nanoseconds};        \
-            nanosleep(&duration, NULL);                               \
-        } while (0)
+    #if CLASSYC_DISABLE_THREAD_SLEEP == 0
+        #ifdef _WIN32
+            #include <windows.h>
+            #define THREAD_SLEEP(milliseconds) Sleep(milliseconds)
+        #elif __unix__
+            #include <time.h>
+            #define THREAD_SLEEP(milliseconds) do {                       \
+                /* convert milliseconds to seconds and nanoseconds */     \
+                long long seconds = milliseconds / 1000;                  \
+                long long nanoseconds = (milliseconds % 1000) * 1000000;  \
+                struct timespec duration = {seconds, nanoseconds};        \
+                nanosleep(&duration, NULL);                               \
+                } while (0)
+        #else
+            /* Unknown system and threads are not supported */
+            #define THREAD_SLEEP(milliseconds) do { (void)(milliseconds); } while (0) 
+        #endif
     #else
-        /* Unknown system and threads are not supported */
+        /* Thread sleep is disabled by the user */
         #define THREAD_SLEEP(milliseconds) do { (void)(milliseconds); } while (0) 
     #endif
     #define LOCK_OBJECT(object_address) (object_address->mutex = 1)
@@ -543,9 +580,9 @@ These macros can be defined before including this header to customize some of th
     typedef struct struct_name struct_name;    \
     struct struct_name
 /* COMPONENTS OF THE CLASS STRUCT */
-#define WRITE_METHOD_POINTER(ret_type, method_name, ...) ret_type (*method_name)(void *self_void, ##__VA_ARGS__);
+#define WRITE_METHOD_POINTER(ret_type, method_name, ...) ret_type (*method_name)(void *self_void WITHOUT_COMMA(__VA_ARGS__));
 #define WRITE_DATA_MEMBER(type, member_name) type member_name;
-#define WRITE_EVENT_MEMBER(event_name, ...) void (*event_name)(void *self_void, ##__VA_ARGS__);
+#define WRITE_EVENT_MEMBER(event_name, ...) void (*event_name)(void *self_void WITHOUT_COMMA(__VA_ARGS__));
 /* Interfaces create a function pointer to the interface cast function. */
 /* The interface cast function will return an interface struct with pointers to the class members */
 #define WRITE_INTERFACE_FUNCTION_POINTER(interface_name) interface_name (*CONCAT(to_, interface_name))(void *self_void);
@@ -565,23 +602,23 @@ STRUCT_HEADER(OBJECT) {
     WRITE_DATA_MEMBER(mtx_t, mutex)
 };
 /* Prototypes for OBJECT class functions */
-static inline void *PREFIXCONCAT(OBJECT, _constructor)(void *self_void);
-static inline void *PREFIXCONCAT(OBJECT, _user_constructor)(bool is_base, void *self_void);
-static inline void PREFIXCONCAT(OBJECT, _destructor)(void *self_void);
-static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void);
+static CLASSYC_INLINE void *PREFIXCONCAT(OBJECT, _constructor)(void *self_void);
+static CLASSYC_INLINE void *PREFIXCONCAT(OBJECT, _user_constructor)(bool is_base, void *self_void);
+static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _destructor)(void *self_void);
+static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void);
 /* OBJECT class constructor function: only sets the destructor function pointer */
-static inline void *PREFIXCONCAT(OBJECT, _constructor)(void *self_void) { 
+static CLASSYC_INLINE void *PREFIXCONCAT(OBJECT, _constructor)(void *self_void) { 
     OBJECT *self = (OBJECT *)self_void; 
     self->_destructor = PREFIXCONCAT(OBJECT, _destructor); 
     /* Should not be called directly */ 
     return self; 
 }
-static inline void *PREFIXCONCAT(OBJECT, _user_constructor)(bool is_base, void *self_void) {
+static CLASSYC_INLINE void *PREFIXCONCAT(OBJECT, _user_constructor)(bool is_base, void *self_void) {
     return self_void;
 }
 /* OBJECT class destructor function */
-static inline void PREFIXCONCAT(OBJECT, _destructor)(void *self_void) { /* OBJECT destructor does nothing */ }
-static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void) { /* OBJECT destructor does nothing */ }
+static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _destructor)(void *self_void) { /* OBJECT destructor does nothing */ }
+static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void) { /* OBJECT destructor does nothing */ }
 
 /* BASIC MACROS */
 /* Get the name of the base class from the IMPLEMENTS macro */
@@ -648,7 +685,7 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 
 /* New and overridden method function prototypes */
 #define WRITE_METHOD_FUNC_PROTOTYPE(ret_type, method_name, ...) \
-    static inline ret_type PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, ##__VA_ARGS__); 
+    static CLASSYC_INLINE ret_type PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void WITHOUT_COMMA(__VA_ARGS__)); 
 #define X_METHOD_FUNC_PROTOTYPES(class_name) \
     /* Writes the method prototypes for the class: new methods and overridden methods */ \
     GET_IMPLEMENTS(class_name)(WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_NOTHING, WRITE_METHOD_FUNC_PROTOTYPE, WRITE_METHOD_FUNC_PROTOTYPE) 
@@ -658,7 +695,7 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 /* Macros to create interface structs with its members on CREATE_INTERFACE */
 /* Method pointer declaration in the interface struct */
 #define WRITE_I_METHOD_PTR(ret_type, method_name, ...) \
-    ret_type (*method_name)(void *self_void, ##__VA_ARGS__);
+    ret_type (*method_name)(void *self_void WITHOUT_COMMA(__VA_ARGS__));
 /* Data member pointerdeclaration in the interface struct */
 #define WRITE_I_DATA_MEMBER(type, member_name) \
     /* A pointer to the data member */\
@@ -667,7 +704,7 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 #define WRITE_I_EVENT_MEMBER(event_name, ...) \
     /* Not a pointer to the function, but a pointer to the function pointer */\
     /* That way, if event handlers are registered later, we don't have to reassign the pointer */\
-    void (**event_name)(void *self_void, ##__VA_ARGS__);
+    void (**event_name)(void *self_void WITHOUT_COMMA(__VA_ARGS__));
 /* Write the interface struct members */
 #define WRITE_INTERFACE_STRUCT(interface_name) \
     GET_INTERFACE(interface_name)(WRITE_I_DATA_MEMBER, WRITE_I_EVENT_MEMBER, WRITE_I_METHOD_PTR)
@@ -776,7 +813,7 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 /* CONSTRUCTOR, DESTRUCTOR, INIT... */
 /* Initialize the base class: call this within the 'CONSTRUCTOR' of the derived class to run the 'CONSTRUCTOR' of the base class. */
 #define INIT_BASE(...) \
-    PREFIXCONCAT(X_GET_BASE_NAME(CLASSYC_CLASS_NAME), _user_constructor)(IS_BASE_TRUE, self, ##__VA_ARGS__)
+    PREFIXCONCAT(X_GET_BASE_NAME(CLASSYC_CLASS_NAME), _user_constructor)(IS_BASE_TRUE, self WITHOUT_COMMA(__VA_ARGS__))
 
 /* Constructor macro, this is where most of the logic for class definition is implemented */
 #define CONSTRUCTOR(...)\
@@ -788,17 +825,17 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
         RECURSIVE_CLASS_MEMBER_DECLARATIONS(CLASSYC_CLASS_NAME)         \
     } ;                                                                 \
     /* Prototypes for the destructor and constructor class functions */ \
-    static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(void *self_void); \
-    static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _ptr_destructor)(CLASSYC_CLASS_NAME **self_ptr); \
-    static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(bool is_base, void *self_void); \
-    static inline void * PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(void *self_void); \
-    static inline void * PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(bool is_base, void *self_void, ##__VA_ARGS__); \
+    static CLASSYC_INLINE void PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(void *self_void); \
+    static CLASSYC_INLINE void PREFIXCONCAT(CLASSYC_CLASS_NAME, _ptr_destructor)(CLASSYC_CLASS_NAME **self_ptr); \
+    static CLASSYC_INLINE void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(bool is_base, void *self_void); \
+    static CLASSYC_INLINE void * PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(void *self_void); \
+    static CLASSYC_INLINE void * PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(bool is_base, void *self_void WITHOUT_COMMA(__VA_ARGS__)); \
     /* Write the prototypes for new and overridden methods */           \
     X_METHOD_FUNC_PROTOTYPES(CLASSYC_CLASS_NAME)                        \
     /* Interface cast functions */                                      \
     RECURSIVE_INTERFACE_CAST_FUNCTIONS(CLASSYC_CLASS_NAME)              \
     /* Constructor function */                                          \
-    static inline void* PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(void * self_void) { \
+    static CLASSYC_INLINE void* PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(void * self_void) { \
         /* This function is used to allocate memory for the object (if needed) and set its basic function and method pointers */ \
         /* Runtime check for inheritance depth: disable by defining CLASSYC_DISABLE_RUNTIME_CHECKS */ \
         CLASSYC_CHECK_INHERITANCE_DEPTH                                 \
@@ -829,7 +866,7 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
         return self;                                                    \
     }                                                                   \
     /* User constructor function */                                     \
-    static inline void* PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(bool is_base, void * self_void, ##__VA_ARGS__) { \
+    static CLASSYC_INLINE void* PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_constructor)(bool is_base, void * self_void WITHOUT_COMMA(__VA_ARGS__)) { \
         if (!is_base) {                                                 \
             /* Only for the instanced objects, not for the base classes: run the 'real' constructor */\
              self_void = PREFIXCONCAT(CLASSYC_CLASS_NAME, _constructor)(self_void); \
@@ -849,7 +886,7 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 #define DESTRUCTOR() \
      /* Contains the destructor code for the class. Then on END_DESTRUCTOR invokes the base class destructor */\
      /* _ptr_destructor is used when a pointer marked for auto-destruction gets out of scope */\
-    static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _ptr_destructor)(CLASSYC_CLASS_NAME **self_ptr) { \
+    static CLASSYC_INLINE void PREFIXCONCAT(CLASSYC_CLASS_NAME, _ptr_destructor)(CLASSYC_CLASS_NAME **self_ptr) { \
            /* Call the destructor for the class */                       \
            PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(*self_ptr);     \
            /* Free the memory allocated for the object and nullify ptr */\
@@ -858,7 +895,7 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
                *self_ptr = NULL;                                         \
            }                                                             \
     }                                                                    \
-    static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(void *self_void) { \
+    static CLASSYC_INLINE void PREFIXCONCAT(CLASSYC_CLASS_NAME, _destructor)(void *self_void) { \
         /* In order to prevent multiple calls to the destructor, we use the _destructor pointer as a marker */ \
         CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void;      \
         if (!self || !self->_destructor) {                               \
@@ -873,7 +910,7 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
         CLASSYC_MUTEX_DESTROY(self->mutex);                              \
     }                                                                    \
     /* User destructor function */                                       \
-    static inline void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(bool is_base, void *self_void) { \
+    static CLASSYC_INLINE void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(bool is_base, void *self_void) { \
         if (!self_void) {                                                \
             /* NULL self_void can't be casted or processed */            \
             return;                                                      \
@@ -893,7 +930,7 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 
 /* METHOD CREATION */
 #define METHOD(ret_type, method_name, ...)                                                                    \
-    static inline ret_type PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, ##__VA_ARGS__) { \
+    static CLASSYC_INLINE ret_type PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void WITHOUT_COMMA(__VA_ARGS__)) { \
         CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void;                                           \
         /* User method code */
 #define END_METHOD \
@@ -903,9 +940,9 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 #if CLASSYC_THREADS_SUPPORTED
     #define ASYNC_METHOD(ret_type, method_name, void_ptr_arg) \
         /* Thread function prototype */                                                                     \
-        static inline int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct); \
+        static CLASSYC_INLINE int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct); \
         /* Wrapper function that starts the thread with arguments */                                        \
-        static inline thrd_t PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, void *arg) { \
+        static CLASSYC_INLINE thrd_t PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, void *arg) { \
             CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void;                                     \
             /* Allocate and assign arguments */                                                             \
             ADD_PREFIX(AsyncArgs) *args_struct = calloc(1, sizeof(ADD_PREFIX(AsyncArgs)));                  \
@@ -926,7 +963,7 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
             return args_struct->thread_id;                                                                  \
         }                                                                                                   \
         /* Thread function where the user's code will run */                                                \
-        static inline int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct){ \
+        static CLASSYC_INLINE int PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread)(void *void_arg_struct){ \
             ADD_PREFIX(AsyncArgs) *args_struct = (ADD_PREFIX(AsyncArgs) *)void_arg_struct;                  \
             CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)args_struct->self_void;                        \
             thrd_t ADD_PREFIX(thread_id) = args_struct->thread_id;                                          \
@@ -972,8 +1009,8 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 
 /* Define an event handler for an instance. Handler_ID is a unique ID for the event handler (letters, numbers, _). */
 #define EVENT_HANDLER(class_name, event_name, handler_ID, ...)                                                   \
-    static inline void GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID)(void *self_void, ##__VA_ARGS__);  \
-    static inline void GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID)(void *self_void, ##__VA_ARGS__) { \
+    static CLASSYC_INLINE void GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID)(void *self_void WITHOUT_COMMA(__VA_ARGS__));  \
+    static CLASSYC_INLINE void GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID)(void *self_void WITHOUT_COMMA(__VA_ARGS__)) { \
         class_name *self = (class_name *)self_void; \
         /* User code for the event */ 
 
@@ -990,7 +1027,7 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 /* The event handler is executed if it has been registered (pointer not NULL). */
 #define RAISE_EVENT(instance_name, event_name, ...)                                                      \
     do {                                                                                                 \
-        if (instance_name->event_name) instance_name->event_name ((void *)instance_name, ##__VA_ARGS__); \
+        if (instance_name->event_name) instance_name->event_name ((void *)instance_name WITHOUT_COMMA(__VA_ARGS__)); \
     } while (0)
 
 /* Raise an event from an interface: use inside any function: RAISE_INTERFACE_EVENT(interface_struct, event_name[, args]) */
@@ -999,7 +1036,7 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
     /* We need to dereference the pointer to the function pointer stored in the interface */ \
     do {                                                                                     \
         if (interface_struct.event_name && (*interface_struct.event_name)) {                 \
-            (*interface_struct.event_name)(interface_struct.self, ##__VA_ARGS__);            \
+            (*interface_struct.event_name)(interface_struct.self WITHOUT_COMMA(__VA_ARGS__));            \
         }                                                                                    \
     } while (0)
 
@@ -1021,12 +1058,12 @@ static inline void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *se
 /* Stack allocation: AUTODESTROY(Class) obj; NEW_INPLACE(class_name, &obj, ...); */
 #define AUTODESTROY_PTR(class_name)  class_name CLEANUP_ATTRIBUTE(class_name, _ptr_destructor)
 #define AUTODESTROY(class_name)      class_name CLEANUP_ATTRIBUTE(class_name, _destructor)
-#define NEW_ALLOC(class_name, ...)   PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, NULL, ##__VA_ARGS__)
+#define NEW_ALLOC(class_name, ...)   PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, NULL WITHOUT_COMMA(__VA_ARGS__))
 #define NEW_INPLACE(class_name, object_address, ...)   \
     /* Sets the already allocated memory zero; needed to avoid undefined values in nested anonymous structs */ \
     memset(object_address, 0, sizeof(class_name));     \
     /* Call the constructor */                        \
-    PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, object_address, ##__VA_ARGS__)
+    PREFIXCONCAT(class_name, _user_constructor)(IS_BASE_FALSE, object_address WITHOUT_COMMA(__VA_ARGS__))
 
 
 /* MACROS FOR OBJECT DESTRUCTION */
