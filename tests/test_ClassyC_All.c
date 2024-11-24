@@ -68,7 +68,9 @@ void test_ClassMethods(void) {
 #define CLASS_BaseClass(Base, Interface, Data, Event, Method, Override) \
     Base(OBJECT) \
     Data(int, base_value) \
-    Method(int, get_base_value)
+    Method(int, get_base_value) \
+    Method(int, get_overridable_value) \
+    Method(int, get_incremental_value)
 
 CONSTRUCTOR(int base_initial)
     self->base_value = base_initial;
@@ -81,12 +83,23 @@ METHOD(int, get_base_value)
     return self->base_value;
 END_METHOD
 
+METHOD(int, get_overridable_value)
+    return 1;
+END_METHOD
+
+METHOD(int, get_incremental_value)
+    return 1;
+END_METHOD
+
+
 #undef CLASS
 #define CLASS DerivedClass
 #define CLASS_DerivedClass(Base, Interface, Data, Event, Method, Override) \
     Base(BaseClass) \
     Data(int, derived_value) \
-    Method(int, get_derived_value) 
+    Method(int, get_derived_value) \
+    Override(int, get_overridable_value) \
+    Override(int, get_incremental_value)
 
 CONSTRUCTOR(int base_initial, int derived_initial)
     INIT_BASE(base_initial);
@@ -100,11 +113,24 @@ METHOD(int, get_derived_value)
     return self->derived_value;
 END_METHOD
 
+METHOD(int, get_overridable_value)
+    return 2;
+END_METHOD
+
+METHOD(int, get_incremental_value)
+    return BASE_METHOD(get_incremental_value) + 2;
+END_METHOD
+
 void test_Inheritance(void) {
     AUTODESTROY_PTR(DerivedClass) *obj = NEW_ALLOC(DerivedClass, 100, 200);
+    BaseClass *base_obj = (BaseClass *)obj;
     TEST_ASSERT_NOT_NULL(obj);
     TEST_ASSERT_EQUAL_INT(100, obj->get_base_value(obj));
     TEST_ASSERT_EQUAL_INT(200, obj->get_derived_value(obj));
+    TEST_ASSERT_EQUAL_INT(2, obj->get_overridable_value(obj));
+    TEST_ASSERT_EQUAL_INT(2, base_obj->get_overridable_value(base_obj));
+    TEST_ASSERT_EQUAL_INT(3, obj->get_incremental_value(obj));
+    TEST_ASSERT_EQUAL_INT(3, base_obj->get_incremental_value(base_obj));
     DESTROY_FREE(obj);
 }
 

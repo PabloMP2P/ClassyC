@@ -61,6 +61,7 @@ ClassyC is an experimental and recreational library not intended for production 
    ```
 6. **Use `METHOD(ret_type, method_name, ...)` macro** to implement every method declared in the `CLASS_class_name` macro.
    - Within methods, the current object is accessed using the `self` pointer.
+   - Optionally, call `BASE_METHOD(method_name[, optional_parameters]);` to run the base class method code.
    - Close the method implementation with `END_METHOD`.
    ```c
    METHOD(void, move, int speed, int distance)
@@ -68,8 +69,15 @@ ClassyC is an experimental and recreational library not intended for production 
        self->km_since_last_fuel += distance;
        int km_to_collapse = 400 - self->km_since_last_fuel;
        if (km_to_collapse < 100) {
-       RAISE_EVENT(self, on_need_fuel, km_to_collapse);
-     }
+           RAISE_EVENT(self, on_need_fuel, km_to_collapse);
+       }
+   END_METHOD
+   ```
+   ```c
+   METHOD(void, move, int speed, int distance)
+       BASE_METHOD(move, speed, distance);
+       // Additional code specific to this class
+       // ...
    END_METHOD
    ```
    - **Use `ASYNC_METHOD(thrd_t, method_name, void *arg)` macro** to implement asynchronous methods. Note that the method must have a return type of `thrd_t` and have a parameter of type and name `void *arg`.

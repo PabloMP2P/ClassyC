@@ -64,6 +64,7 @@ ClassyC is an experimental and recreational library not intended for production 
    ```
 6. **Use `METHOD(ret_type, method_name, ...)` macro** to implement every method declared in the `CLASS_class_name` macro.
    - Within methods, the current object is accessed using the `self` pointer.
+   - Optionally, call `BASE_METHOD(method_name[, optional_parameters]);` to run the base class method code.
    - Close the method implementation with `END_METHOD`.
    ```c
    METHOD(void, move, int speed, int distance)
@@ -71,8 +72,15 @@ ClassyC is an experimental and recreational library not intended for production 
        self->km_since_last_fuel += distance;
        int km_to_collapse = 400 - self->km_since_last_fuel;
        if (km_to_collapse < 100) {
-       RAISE_EVENT(self, on_need_fuel, km_to_collapse);
-     }
+           RAISE_EVENT(self, on_need_fuel, km_to_collapse);
+       }
+   END_METHOD
+   ```
+   ```c
+   METHOD(void, move, int speed, int distance)
+       BASE_METHOD(move, speed, distance);
+       // Additional code specific to this class
+       // ...
    END_METHOD
    ```
    - **Use `ASYNC_METHOD(thrd_t, method_name, void *arg)` macro** to implement asynchronous methods. Note that the method must have a return type of `thrd_t` and have a parameter of type and name `void *arg`.
@@ -946,7 +954,8 @@ static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, 
         static CLASSYC_INLINE thrd_t PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void, void *arg) { \
             CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void;                                     \
             /* Allocate and assign arguments */                                                             \
-            ADD_PREFIX(AsyncArgs) *args_struct = calloc(1, sizeof(ADD_PREFIX(AsyncArgs)));                  \
+            ADD_PREFIX(AsyncArgs) *args_struct = NULL;                                                      \
+            args_struct = calloc(1, sizeof(ADD_PREFIX(AsyncArgs)));                                         \
             if (!args_struct) {                                                                             \
                 fprintf(stderr, "Error: Failed to allocate memory for async method arguments '%s'.\n", #method_name); \
                 return thrd_error;                                                                          \
@@ -957,7 +966,9 @@ static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, 
             if (CLASSYC_THREAD_CREATE(args_struct->thread_id, PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name##_thread), args_struct) != thrd_success) { \
                 /* Handle thread creation error */                                                          \
                 fprintf(stderr, "Error: Failed to create thread for method '%s'.\n", #method_name);         \
-                free(args_struct); /* don't leave allocated memory on the heap */                           \
+                if (args_struct) {                                                                          \
+                    free(args_struct);                                                                      \
+                }                                                                                           \
                 return thrd_error;                                                                          \
             }                                                                                               \
             /* Return immediately */                                                                        \
@@ -980,7 +991,7 @@ static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, 
         /* Free the arguments structure to prevent memory leak, */        \
         /* then detach the thread when the thread ends (at the end of the function) so it cleans up after itself, */ \
         /* and evaluate to the int return value of the detachment */      \
-        (free(args_struct), CLASSYC_THREAD_DETACH(ADD_PREFIX(thread_id)))
+        (args_struct ? free(args_struct) : 0, CLASSYC_THREAD_DETACH(ADD_PREFIX(thread_id)))
         
     #define AWAIT(thread_id) \
         thrd_join(thread_id, NULL)
@@ -1003,6 +1014,10 @@ static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, 
         thrd_t ADD_PREFIX(dummy_await_thread) = thread_id; \
     } while (0)
 #endif
+
+/* Base method caller */
+#define BASE_METHOD(method_name, ...) \
+    PREFIXCONCAT(X_GET_BASE_NAME(CLASSYC_CLASS_NAME), _##method_name)(self WITHOUT_COMMA(__VA_ARGS__))
 
 /* EVENTS */
 #define GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID) \
