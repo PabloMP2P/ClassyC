@@ -1,5 +1,5 @@
 # ClassyC
-A portable library for OOP in C that allows simple syntax for creating and using classes with polymorphism, inheritance, interfaces, events, sync and async methods, automatic method registration and automatic destruction of objects and freeing of memory.
+A portable library for OOP in C that allows simple syntax for creating and using classes with polymorphism, inheritance, interfaces, events, automatic method registration and automatic destruction of objects and freeing of memory.
 
 
 ClassyC is an experimental and recreational library not intended for production use. Anything can change at any time. Use at your own risk.
@@ -16,7 +16,7 @@ ClassyC is an experimental and recreational library not intended for production 
    - Classes implement interfaces. When a class declares that it uses an interface, it must also declare and define all the members (data, events, and methods) of that interface, or inherit them from a parent class.
    - Overridden methods must exactly match the signatures (return type, number of parameters, and parameter types) of the original method to ensure proper behavior.
    - Declarations should not redeclare any members already present in base classes (name collision will occur), except for Override methods.
-   - All classes must inherit from another class, or the OBJECT class, so all objects inherit the OBJECT class members (a destructor and a mutex).
+   - All classes must inherit from another class, or the OBJECT class, so all objects inherit the OBJECT class members (a destructor).
    Syntax:
    - `Base(base_class_name)` - To declare the base class (use `OBJECT` if it has no base class).
    - `Interface(interface_name)` - To declare an interface.
@@ -80,17 +80,6 @@ ClassyC is an experimental and recreational library not intended for production 
        // ...
    END_METHOD
    ```
-   - **Use `ASYNC_METHOD(thrd_t, method_name, void *arg)` macro** to implement asynchronous methods. Note that the method must have a return type of `thrd_t` and have a parameter of type and name `void *arg`.
-   ```c
-   ASYNC_METHOD(thrd_t, save_data, void *arg)
-       // save data 
-       write_data_to_file((my_data_struct *)arg);
-       // ...
-       self->finished = true;
-   END_ASYNC_METHOD
-   ```
-   - Synchronous methods will block until they finish, and can have parameters and return values.
-   - Asynchronous methods will return immediately and must have one parameter of type `void *` and name `arg`. Asynchronous methods return the thread ID, which can be used with the `AWAIT` macro to wait for the method to finish.
 7. **Raise events from any method using `RAISE_EVENT(object, event_name[, args])`**. If the event has a registered handler, it will be called.
 
 ## Using a class
@@ -213,67 +202,6 @@ The resulting interface accessor for an interface is a struct of type `interface
    ```c
    RAISE_INTERFACE_EVENT(movable_struct, on_move, distance_moved);
    ```
-## Async methods
-- A method can be defined as an asynchronous method if it has `thrd_t` return type, and has one parameter of type `void *` and name `arg`. When an asynchronous method is called, it will return the thread ID immediately and the method will run in a separate thread.
-- The declaration in the CLASS_class_name macro of an asynchronous method is exactly the same as for a synchronous method.
-- To make a method async simply use `ASYNC_METHOD` instead of `METHOD` in its body definition.
-- The self pointer and the `void *arg` parameter are available in the asynchronous method body.
-- To return from an asynchronous method beforehand, return the value of the `EXIT_ASYNC` macro: `return EXIT_ASYNC;` This ensures that the thread is detached and the memory allocated for the arguments structure is freed.
-- Async methods are supported if the compiler provides <threads.h> support or if the TinyCThread library files tinycthread.h and tinycthread.c are present in the ClassyC directory (source available at: https://github.com/tinycthread/tinycthread).
-- If the compiler doesn't support threads, and the TinyCThread library is not available, asynchronous methods will be disabled and the library will fall back to synchronous methods.
-- The availability of async methods can be checked with the CLASSYC_THREADS_SUPPORTED macro.
-   ```c
-   #define CLASS_AsyncSave(Base, Interface, Data, Event, Method, Override) \
-       Base(OBJECT) \
-       Data(bool, finished) \
-       Method(thrd_t, save_data, void *arg)
-   ```
-   ```c
-   ASYNC_METHOD(thrd_t, save_data, void *arg)
-       // save data   
-       write_data_to_file((my_data_struct *)arg);
-       // ...
-       self->finished = true;
-   END_ASYNC_METHOD
-   ```
-- Use the `AWAIT` macro to pause the current thread until the asynchronous method finishes. This is particularly useful when subsequent operations depend on the result of an asynchronous call.
-- Use the thread identifier returned by the asynchronous method with the `AWAIT` macro.
-   ```c
-   AWAIT(my_car->save_data(my_car, data_arg));
-   ```
-   or
-   ```c
-   // Invoke an asynchronous method
-   thrd_t thread_id = my_car->save_data(my_car, data_arg);
-   // Wait for the asynchronous method to complete
-   AWAIT(thread_id);
-   // Continue with operations that depend on the completion of save_data
-   if (my_car->finished) {
-       printf("Data saved successfully.\n");
-   }
-   ```
-- Use the `THREAD_SLEEP` macro to pause the current thread for a given duration.
-   ```c
-   ASYNC_METHOD(thrd_t, async_method, void *arg)
-       // ...
-       THREAD_SLEEP(1000); // Stop this method for 1000 milliseconds (1 second), then continue
-       // ...
-   END_ASYNC_METHOD
-   ```
-## Synchronization and object locking
-- To ensure thread safety when working with shared resources across multiple threads, ClassyC provides an easy to use mutex support through predefined macros.
-- Every object has a `mutex` data member of type `mtx_t`, which can be used to synchronize access to the object.
-- Lock an object to read or write to it in a thread-safe way using the `LOCK_OBJECT` macro.
-- Unlock an object using the `UNLOCK_OBJECT` macro.
-   ```c
-   LOCK_OBJECT(my_app);
-   my_app->do_something();
-   UNLOCK_OBJECT(my_app);
-   ```
-- Always acquire a lock using `LOCK_OBJECT(object_ptr)` before accessing or modifying shared data members. Release the lock immediately after the critical section using `UNLOCK_OBJECT(object_ptr)`.
-- Minimize the scope of locked sections to reduce contention.
-- Avoid deadlocks by maintaining a consistent locking order across different objects and methods.
-- Consider using higher-level and/or lower-level synchronization mechanisms if necessary.
 ## ClassyC configuration macros
 These macros can be defined before including this header to customize some of the library's naming conventions and error checking.
 - **CLASSYC_PREFIX**: Prefix for the global scope identifiers. Default: `#define CLASSYC_PREFIX ClassyC_`
@@ -293,13 +221,13 @@ These macros can be defined before including this header to customize some of th
    ```c
    #define CLASSYC_CLASS_IMPLEMENT DECLARE_CLASS_
    #define DECLARE_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
-       Data(void, DESTRUCTOR_FUNCTION_POINTER) Data(mtx_t, mutex)
+       Data(void, DESTRUCTOR_FUNCTION_POINTER)
    #define DECLARE_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
    ```
    ```c
    #define CLASSYC_CLASS_IMPLEMENT CUSTOM_CLASS_
    #define CUSTOM_CLASS_OBJECT(Base, Interface, Data, Event, Method, Override) \
-       Data(void, DESTRUCTOR_FUNCTION_POINTER) Data(mtx_t, mutex)
+       Data(void, DESTRUCTOR_FUNCTION_POINTER)
    #define CUSTOM_CLASS_Aircraft(Base, Interface, Data, Event, Method, Override)
    ```
 - **CLASSYC_INTERFACE_DECLARATION**: The name of the macro that declares the interface. Default: `#define CLASSYC_INTERFACE_DECLARATION I_`
@@ -309,8 +237,6 @@ These macros can be defined before including this header to customize some of th
    ```
 - **CLASSYC_DISABLE_RUNTIME_CHECKS**: Disable runtime checks for inheritance depth. Default: not defined.
 - **CLASSYC_ENABLE_COMPILE_TIME_CHECKS**: Enable compile-time checks for inheritance depth. Default: not defined.
-- **CLASSYC_DISABLE_ASYNC_METHODS**: Disable asynchronous methods (and therefore not require thread support headers). Default: not defined.
-- **CLASSYC_DISABLE_THREAD_SLEEP**: Disable thread sleep. In Windows, this avoids the need of inclusion of the windows.h header. Default: not defined.
 ## Additional notes
 - ClassyC supports automatic destruction of objects when they go out of scope if the compiler supports the `__attribute__((__cleanup__))` attribute (e.g., GCC and Clang).
 - Class definitions must be at the global scope. Objects can be declared at any scope, but can't be instantiated outside a function. Interfaces are declared in the top-level scope, before any class that uses them.
@@ -348,11 +274,8 @@ These macros can be defined before including this header to customize some of th
   Compile-time checks are available in C11 and later and can be enabled by defining `CLASSYC_ENABLE_COMPILE_TIME_CHECKS` before including the header.
   Runtime checks are enabled by default, but can be disabled by defining `CLASSYC_DISABLE_RUNTIME_CHECKS` before including the header.
   To support deeper inheritance hierarchies, you can extend the recursive macros definitions by adding `RECURSIVE_CLASS_MEMBER_DECLARATION_10`, `RECURSIVE_CLASS_MEMBER_DECLARATION_11`, and so on, making sure that each macro expands to the next one.
-- Asynchronous methods will release the thread and the resources when they finish.
-- When using asynchronous methods, ensure the number of threads does not exceed the system's capacity.
-- If you are using shared objects across multiple threads, ensure they are protected using LOCK_OBJECT and UNLOCK_OBJECT or make sure other proper synchronization mechanisms are in place to avoid race conditions.
+- If you are using shared objects across multiple threads, ensure they are protected using mutexes or make sure other proper synchronization mechanisms are in place to avoid race conditions.
 
 
 ## Acknowledgements
 - **Unity Test**: I used Unity Test to perform some tests on ClassyC: (https://github.com/ThrowTheSwitch/Unity).
-- **TinyCThread**: I used TinyCThread to provide portability for thread support for asynchronous methods: (https://github.com/tinycthread/tinycthread).
