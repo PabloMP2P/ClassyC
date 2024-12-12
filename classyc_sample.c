@@ -17,10 +17,12 @@
 #include "ClassyC.h"
 
 /* Number of objects to create and destroy in the speed test */
-#define TEST_NUM_OBJECTS 100000ull
+#define TEST_NUM_OBJECTS 1000000ull
 /* We'll count instances created and destroyed to show how auto-destruction works to prevent memory leaks */
-size_t num_objects_created = 0;
-size_t num_objects_destroyed = 0;
+size_t unique_objects_created = 0;
+size_t unique_objects_destroyed = 0;
+size_t total_objects_created = 0;
+size_t total_objects_destroyed = 0;
 
 /* Interfaces */
 #define I_Moveable(Data, Event, Method) \
@@ -45,10 +47,12 @@ CREATE_INTERFACE(Sellable)
     Method(int, estimate_price) \
     Method(void, move, int speed, int distance)
 CONSTRUCTOR() 
-    if (!is_base) num_objects_created++;
+    if (!is_base) unique_objects_created++;
+    total_objects_created++;
 END_CONSTRUCTOR
 DESTRUCTOR() 
-    if (!is_base) num_objects_destroyed++;
+    if (!is_base) unique_objects_destroyed++;
+    total_objects_destroyed++;
 END_DESTRUCTOR
 METHOD(int, estimate_price)
     return 1000;
@@ -74,10 +78,12 @@ CONSTRUCTOR(int km_total_when_bought)
     self->position = 0;
     self->km_total = km_total_when_bought;
     self->km_since_last_fuel = 0;
-    if (!is_base) num_objects_created++;
-END_CONSTRUCTOR                     
+    if (!is_base) unique_objects_created++;
+    total_objects_created++;
+END_CONSTRUCTOR
 DESTRUCTOR() 
-    if (!is_base) num_objects_destroyed++;
+    if (!is_base) unique_objects_destroyed++;
+    total_objects_destroyed++;
 END_DESTRUCTOR
 METHOD(void, move, int speed, int distance)
     printf("Moving car %d units at %d speed\n", distance, speed);
@@ -103,25 +109,17 @@ END_METHOD
     Event(on_move, int distance_moved) \
     Method(void, move, int speed, int distance)
 CONSTRUCTOR() 
-    if (!is_base) num_objects_created++;
+    if (!is_base) unique_objects_created++;
+    total_objects_created++;
 END_CONSTRUCTOR
 DESTRUCTOR()
-    if (!is_base) num_objects_destroyed++;
+    if (!is_base) unique_objects_destroyed++;
+    total_objects_destroyed++;
 END_DESTRUCTOR
 METHOD(void, move, int speed, int distance)
+    if (speed < 0) printf("Elephant going back in space or time!\n");
     self->position += distance;
 END_METHOD
-
-#undef CLASS
-#define CLASS TinyClass
-#define CLASS_TinyClass(Base, Interface, Data, Event, Method, Override) \
-    Base(OBJECT) 
-CONSTRUCTOR() 
-    if (!is_base) num_objects_created++;
-END_CONSTRUCTOR
-DESTRUCTOR() 
-    if (!is_base) num_objects_destroyed++;
-END_DESTRUCTOR
 
 /* Interfaces can be used as types, and they contain pointers to the object members */
 void swap_movables_position(Moveable object1, Moveable object2) {
@@ -147,9 +145,13 @@ EVENT_HANDLER(Car, on_move, mycar_move, int distance_moved)
 END_EVENT_HANDLER
 
 void successful_exit(void) {
-    printf("\nAt program exit: %zu objects created, %zu objects destroyed.\n", num_objects_created, num_objects_destroyed);
-    if (num_objects_created != num_objects_destroyed) {
-        printf("%zu objects remaining, memory leaks present.\n", num_objects_created - num_objects_destroyed);
+    printf("\nAt program exit: \n");
+    printf("%zu unique objects created, %zu unique objects destroyed.\n", unique_objects_created, unique_objects_destroyed);
+    printf("%zu total objects created, %zu total objects destroyed.\n", total_objects_created, total_objects_destroyed);
+    if (unique_objects_created != unique_objects_destroyed) {
+        printf("%zu unique objects remaining, memory leaks present.\n", unique_objects_created - unique_objects_destroyed);
+    } else if (total_objects_created != total_objects_destroyed) {
+        printf("%zu total objects remaining, memory leaks present.\n", total_objects_created - total_objects_destroyed);
     } else {
         printf("Program finished successfully.\n");
     }
@@ -227,33 +229,33 @@ int main(void){
     clock_t start_time = clock();
     size_t iter;
     for (iter = 0; iter < TEST_NUM_OBJECTS; iter++) {
-        AUTODESTROY_PTR(TinyClass) *tiny_heap_object = NEW_ALLOC(TinyClass);
-        if (tiny_heap_object == NULL) {
+        AUTODESTROY_PTR(Car) *car_heap_object = NEW_ALLOC(Car, rand());
+        if (car_heap_object == NULL) {
             printf("Memory allocation failed\n");
             return 1;
         }
 #if CLASSYC_AUTO_DESTROY_SUPPORTED == 0 
         /* Compiler doesn't support auto-destruction; destroy the objects manually */
-        DESTROY_FREE(tiny_heap_object);
+        DESTROY_FREE(car_heap_object);
 #endif
     }
     clock_t end_time = clock();
     double cpu_time_used = ((double)(end_time - start_time)) / CLOCKS_PER_SEC;
-    printf("Time taken to create and destroy %llu objects of size %d in the heap: %f seconds. (%.2f objects/second)\n", TEST_NUM_OBJECTS, (int)sizeof(TinyClass), cpu_time_used, TEST_NUM_OBJECTS / cpu_time_used);
+    printf("Time taken to create and destroy %llu objects of size %d in the heap: %f seconds. (%.2f objects/second)\n", TEST_NUM_OBJECTS, (int)sizeof(Car), cpu_time_used, TEST_NUM_OBJECTS / cpu_time_used);
 
     start_time = clock();
     for (iter = 0; iter < TEST_NUM_OBJECTS; iter++) {
-        AUTODESTROY(TinyClass) tiny_stack_object;
-        NEW_INPLACE(TinyClass, &tiny_stack_object);
+        AUTODESTROY(Car) car_stack_object;
+        NEW_INPLACE(Car, &car_stack_object, rand());
 
 #if CLASSYC_AUTO_DESTROY_SUPPORTED == 0
         /* Compiler doesn't support auto-destruction; destroy the objects manually */
-        DESTROY(tiny_stack_object);
+        DESTROY(car_stack_object);
 #endif
     }
     end_time = clock();
     cpu_time_used = ((double)(end_time - start_time)) / CLOCKS_PER_SEC;
-    printf("Time taken to create and destroy %llu objects of size %d in the stack: %f seconds. (%.2f objects/second)\n", TEST_NUM_OBJECTS, (int)sizeof(TinyClass), cpu_time_used, TEST_NUM_OBJECTS / cpu_time_used);
+    printf("Time taken to create and destroy %llu objects of size %d in the stack: %f seconds. (%.2f objects/second)\n", TEST_NUM_OBJECTS, (int)sizeof(Car), cpu_time_used, TEST_NUM_OBJECTS / cpu_time_used);
 
 #if CLASSYC_AUTO_DESTROY_SUPPORTED == 0
     /* Compiler doesn't support auto-destruction; destroy the objects manually */

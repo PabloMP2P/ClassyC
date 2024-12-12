@@ -4,7 +4,7 @@ else
     CC ?= gcc
 endif
 
-CFLAGS += -I../ -Iunity
+CFLAGS += -I../ -Iunity -Wall -pedantic -Wextra
 UNITY_SRC = unity.c
 SRC = ../ClassyC.h ./test_ClassyC_All.c
 

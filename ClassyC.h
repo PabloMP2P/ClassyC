@@ -443,11 +443,12 @@ static CLASSYC_INLINE void *PREFIXCONCAT(OBJECT, _constructor)(void *self_void) 
     return self; 
 }
 static CLASSYC_INLINE void *PREFIXCONCAT(OBJECT, _user_constructor)(bool is_base, void *self_void) {
+    (void)is_base;
     return self_void;
 }
 /* OBJECT class destructor function */
-static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _destructor)(void *self_void) { /* OBJECT destructor does nothing */ }
-static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void) { /* OBJECT destructor does nothing */ }
+static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _destructor)(void *self_void) { (void)self_void; /* OBJECT destructor does nothing */ }
+static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, void *self_void) { (void)is_base; (void)self_void; /* OBJECT destructor does nothing */ }
 
 /* BASIC MACROS */
 /* Get the name of the base class from the IMPLEMENTS macro */
@@ -736,6 +737,7 @@ static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, 
     }                                                                    \
     /* User destructor function */                                       \
     static CLASSYC_INLINE void PREFIXCONCAT(CLASSYC_CLASS_NAME, _user_destructor)(bool is_base, void *self_void) { \
+        (void)is_base;                                                   \
         if (!self_void) {                                                \
             /* NULL self_void can't be casted or processed */            \
             return;                                                      \
@@ -757,7 +759,9 @@ static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, 
 #define METHOD(ret_type, method_name, ...)                                                                    \
     static CLASSYC_INLINE ret_type PREFIXCONCAT(CLASSYC_CLASS_NAME, _##method_name)(void *self_void WITHOUT_COMMA(__VA_ARGS__)) { \
         CLASSYC_CLASS_NAME *self = (CLASSYC_CLASS_NAME *)self_void;                                           \
+        (void)self;                                                                                           \
         /* User method code */
+
 #define END_METHOD \
     }
 
@@ -774,6 +778,7 @@ static CLASSYC_INLINE void PREFIXCONCAT(OBJECT, _user_destructor)(bool is_base, 
     static CLASSYC_INLINE void GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID)(void *self_void WITHOUT_COMMA(__VA_ARGS__));  \
     static CLASSYC_INLINE void GET_EVENT_FUNC_NAME(class_name, event_name, handler_ID)(void *self_void WITHOUT_COMMA(__VA_ARGS__)) { \
         class_name *self = (class_name *)self_void; \
+        (void)self;                                 \
         /* User code for the event */ 
 
 #define END_EVENT_HANDLER }
