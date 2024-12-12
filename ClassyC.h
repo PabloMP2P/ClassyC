@@ -54,8 +54,8 @@ ClassyC is an experimental and recreational library not intended for production 
        self->km_total = km_total_when_bought;
        self->km_since_last_fuel = 0;
        if (!is_base) {
-       // Initialization code specific to the most derived class, for example, counting the number of instances of the class
-     }     
+           // Initialization code specific to the most derived class, for example, counting the number of instances of the class
+       }     
    END_CONSTRUCTOR
    ```
 5. **Use `DESTRUCTOR()` macro** and include cleanup code before the `END_DESTRUCTOR` macro. Instance is available as `self`, and `is_base` reports if the destructor is being called by a derived class.
