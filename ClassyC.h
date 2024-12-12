@@ -30,12 +30,12 @@ ClassyC is an experimental and recreational library not intended for production 
    ```c
    #define CLASS Car
    #define CLASS_Car(Base, Interface, Data, Event, Method, Override) \
-       Base(Vehicle) \
-       Data(int, km_total) \
-       Data(int, km_since_last_fuel) \
-       Event(on_need_fuel, int km_to_collapse) \
-       Method(void, park) \
-       Override(int, estimate_price) \
+       Base(Vehicle)                                                 \
+       Data(int, km_total)                                           \
+       Data(int, km_since_last_fuel)                                 \
+       Event(on_need_fuel, int km_to_collapse)                       \
+       Method(void, park)                                            \
+       Override(int, estimate_price)                                 \
        Override(void, move, int speed, int distance)
    ```
 4. **Use `CONSTRUCTOR(optional_parameters)` macro** and include any code to execute when a new instance (available as `self` in the constructor) is created.
@@ -158,8 +158,8 @@ Interfaces define contracts that implementing classes must fulfill. When impleme
      - `Method(ret_type, method_name[, args])` - To declare a method.
    ```c
    #define I_Moveable(Data, Event, Method) \
-     Data(int, position) \
-     Event(on_move, int distance_moved) \
+     Data(int, position)                   \
+     Event(on_move, int distance_moved)    \
      Method(void, move, int speed, int distance)
    ```
 2. **Call `CREATE_INTERFACE(interface_name)` once right after the interface declaration.**
@@ -171,11 +171,11 @@ Interfaces define contracts that implementing classes must fulfill. When impleme
 3. **To implement the interface, make sure the class declares or inherits all the members and includes the interface name in its `CLASS_class_name` interfaces list.**
    ```c
    #define CLASS_Vehicle(Base, Interface, Data, Event, Method, Override)\
-       Base(OBJECT) Interface(Sellable) Interface(Moveable) \
-       Data(int, id) \
-       Data(int, position) \
-       Event(on_move, int distance_moved) \
-       Method(int, estimate_price) \
+       Base(OBJECT) Interface(Sellable) Interface(Moveable)             \
+       Data(int, id)                                                    \
+       Data(int, position)                                              \
+       Event(on_move, int distance_moved)                               \
+       Method(int, estimate_price)                                      \
        Method(void, move, int speed, int distance)
    ```
 4. **Access the Interface**
